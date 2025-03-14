@@ -3,10 +3,8 @@ from agno.models.openai import OpenAIChat
 from agno.tools.cartesia import CartesiaTools
 
 """
-Example showing how to use the Cartesia Tools with Agno.
-
 Requirements:
-- Cartesia API key
+- Cartesia API key (Get from https://play.cartesia.ai/keys)
 - pip install cartesia
 
 Usage:
