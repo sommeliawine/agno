@@ -9,7 +9,7 @@ Requirements:
 
 Usage:
 - Set the following environment variable:
-    export CARTEISIA_API_KEY="your_api_key"
+    export CARTESIA_API_KEY="your_api_key"
 
 - Or provide it when creating the CartesiaTools instance
 """
@@ -22,7 +22,7 @@ agent = Agent(
     markdown=True,
 )
 
-agent.print_response("List all available voices in Cartesia.")
-# agent.print_response("Generate speech for the text 'Welcome to Cartesia voice technology' using an english female voice")
+# agent.print_response("List all available voices in Cartesia.")
+agent.print_response("Generate speech for the text 'Welcome to Cartesia voice technology' using an english female voice")
 # agent.print_response("How can I clone a voice from an audio file?")
 
