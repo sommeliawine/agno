@@ -3496,7 +3496,7 @@ class Agent:
         import json
 
         self.memory = cast(AgentMemory, self.memory)
-        tool_calls = self.memory.get_tool_calls(num_calls)
+        tool_calls = self.memory.get_tool_calls(session_id=self.session_id, num_calls=num_calls)
         if len(tool_calls) == 0:
             return ""
         log_debug(f"tool_calls: {tool_calls}")
