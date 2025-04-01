@@ -142,7 +142,7 @@ class MongoMemoryDb(MemoryDb):
             logger.error(f"Error upserting memory: {e}")
             raise
 
-    def delete_memory(self, id: str) -> None:
+    def delete_memory(self, memory_id: str) -> None:
         """Delete a memory from the collection
         Args:
             id: ID of the memory to delete
@@ -150,11 +150,11 @@ class MongoMemoryDb(MemoryDb):
             None
         """
         try:
-            result = self.collection.delete_one({"id": id})
+            result = self.collection.delete_one({"id": memory_id})
             if result.deleted_count == 0:
-                log_debug(f"No memory found with id: {id}")
+                log_debug(f"No memory found with id: {memory_id}")
             else:
-                log_debug(f"Successfully deleted memory with id: {id}")
+                log_debug(f"Successfully deleted memory with id: {memory_id}")
         except PyMongoError as e:
             logger.error(f"Error deleting memory: {e}")
             raise

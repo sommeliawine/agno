@@ -145,9 +145,9 @@ class PgMemoryDb(MemoryDb):
                 return self.upsert_memory(memory, create_and_retry=False)
             return None
 
-    def delete_memory(self, id: str) -> None:
+    def delete_memory(self, memory_id: str) -> None:
         with self.Session() as sess, sess.begin():
-            stmt = delete(self.table).where(self.table.c.id == id)
+            stmt = delete(self.table).where(self.table.c.id == memory_id)
             sess.execute(stmt)
 
     def drop_table(self) -> None:

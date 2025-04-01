@@ -1,15 +1,14 @@
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field
 
-from agno.memory.db import MemoryDb
 from agno.memory.memory import Memory
-from agno.memory.row import MemoryRow
 from agno.models.base import Model
 from agno.models.message import Message
-from agno.tools.function import Function
-from agno.utils.log import log_debug, log_error, logger
+from agno.utils.log import log_debug, log_error, log_warning
+from agno.utils.prompts import get_json_output_prompt
+from agno.utils.string import parse_response_model_str
 
 
 class MemoryUpdate(BaseModel):
@@ -19,17 +18,17 @@ class MemoryUpdate(BaseModel):
         ...,
         description="The user memory to be stored or updated.",
     )
-    topic: Optional[str] = Field(None, description="The topic of the memory.")
+    topics: Optional[str] = Field(None, description="The topics of the memory.")
     id: Optional[str] = Field(None, description="The id of the memory to update. ONLY use if you want to update an existing memory.")
 
-class MemoryUpdates(BaseModel):
+class MemoryUpdatesResponse(BaseModel):
     """Model for updates to the user's memory."""
 
     updates: List[MemoryUpdate] = Field(
         ...,
         description="The updates to the user's memory.",
     )
-    
+
 @dataclass
 class MemoryManager:
     """Model for Memory Manager"""
@@ -42,15 +41,15 @@ class MemoryManager:
     def update_model(self) -> None:
 
         if self.model.supports_native_structured_outputs:
-            self.model.response_format = MemoryUpdates
+            self.model.response_format = MemoryUpdatesResponse
             self.model.structured_outputs = True
 
         elif self.model.supports_json_schema_outputs:
             self.model.response_format = {
                 "type": "json_schema",
                 "json_schema": {
-                    "name": MemoryUpdates.__name__,
-                    "schema": MemoryUpdates.model_json_schema(),
+                    "name": MemoryUpdatesResponse.__name__,
+                    "schema": MemoryUpdatesResponse.model_json_schema(),
                 },
             }
         else:
@@ -60,7 +59,7 @@ class MemoryManager:
     def get_system_message(self, messages: List[Message], existing_memories: Optional[List[Memory]] = None) -> Message:
         if self.system_prompt is not None:
             return Message(role="system", content=self.system_prompt)
-        
+
         # -*- Return a system message for the memory manager
         system_prompt_lines = [
             "Your task is to generate concise memories for the user's messages. "
@@ -84,27 +83,30 @@ class MemoryManager:
                 user_messages.append(message.content)
         system_prompt_lines.append("\n".join(user_messages))
         system_prompt_lines.append("</user_messages>")
-        
+
         if existing_memories and len(existing_memories) > 0:
             system_prompt_lines.extend(
                 [
                     "\nExisting memories:",
                     "<existing_memories>\n"
-                    + "\n".join([f"  - {m.memory}" for m in self.existing_memories])
+                    + "\n".join([f"  - {m.memory}" for m in existing_memories])
                     + "\n</existing_memories>",
                 ]
             )
+
+        if self.model.response_format == {"type": "json_object"}:
+            system_prompt_lines.append(get_json_output_prompt(MemoryUpdatesResponse))
         return Message(role="system", content="\n".join(system_prompt_lines))
 
     def run(
         self,
         messages: Optional[List[Message]] = None,
         existing_memories: Optional[List[Memory]] = None,
-    ) -> Optional[str]:
+    ) -> Optional[MemoryUpdatesResponse]:
         if self.model is None:
             log_error("No model provided for memory manager")
             return
-        
+
         log_debug("MemoryManager Start", center=True)
 
         # Update the Model (set defaults, add logit etc.)
@@ -120,13 +122,30 @@ class MemoryManager:
         # Generate a response from the Model (includes running function calls)
         response = self.model.response(messages=messages_for_model)
         log_debug("MemoryManager End", center=True)
-        return response.content
+
+        # If the model natively supports structured outputs, the parsed value is already in the structured format
+        if self.model.supports_native_structured_outputs and response.parsed is not None and isinstance(response.parsed, MemoryUpdatesResponse):
+            return response.parsed
+
+        # Otherwise convert the response to the structured format
+        if isinstance(response.content, str):
+            try:
+                memory_updates: Optional[MemoryUpdatesResponse] = parse_response_model_str(response.content, MemoryUpdatesResponse)
+
+                # Update RunResponse
+                if memory_updates is not None:
+                    return memory_updates
+                else:
+                    log_warning("Failed to convert memory_updates response to MemoryUpdatesResponse object")
+            except Exception as e:
+                log_warning(f"Failed to convert memory_updates response to MemoryUpdatesResponse: {e}")
+        return None
 
     async def arun(
         self,
         message: Optional[str] = None,
         **kwargs: Any,
-    ) -> Optional[str]:
+    ) -> Optional[MemoryUpdatesResponse]:
         if self.model is None:
             log_error("No model provided for memory manager")
             return
@@ -143,7 +162,23 @@ class MemoryManager:
         self.input_message = message
 
         # Generate a response from the Model (includes running function calls)
-        self.model = cast(Model, self.model)
         response = await self.model.aresponse(messages=messages_for_model)
         log_debug("MemoryManager End", center=True)
-        return response.content
+
+        # If the model natively supports structured outputs, the parsed value is already in the structured format
+        if self.model.supports_native_structured_outputs and response.parsed is not None and isinstance(response.parsed, MemoryUpdatesResponse):
+            return response.parsed
+
+        # Otherwise convert the response to the structured format
+        if isinstance(response.content, str):
+            try:
+                memory_updates: Optional[MemoryUpdatesResponse] = parse_response_model_str(response.content, MemoryUpdatesResponse)
+
+                # Update RunResponse
+                if memory_updates is not None:
+                    return memory_updates
+                else:
+                    log_warning("Failed to convert memory_updates response to MemoryUpdatesResponse object")
+            except Exception as e:
+                log_warning(f"Failed to convert memory_updates response to MemoryUpdatesResponse: {e}")
+        return None

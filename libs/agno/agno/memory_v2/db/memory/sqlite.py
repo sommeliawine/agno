@@ -162,9 +162,9 @@ class SqliteMemoryDb(MemoryDb):
             else:
                 raise
 
-    def delete_memory(self, id: str) -> None:
+    def delete_memory(self, memory_id: str) -> None:
         with self.Session() as session:
-            stmt = delete(self.table).where(self.table.c.id == id)
+            stmt = delete(self.table).where(self.table.c.id == memory_id)
             session.execute(stmt)
             session.commit()
 

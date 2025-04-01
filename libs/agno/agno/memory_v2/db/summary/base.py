@@ -12,7 +12,7 @@ class SummaryDb(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def summary_exists(self, memory: SummaryRow) -> bool:
+    def summary_exists(self, summary: SummaryRow) -> bool:
         raise NotImplementedError
 
     @abstractmethod
@@ -26,7 +26,7 @@ class SummaryDb(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def delete_summary(self, id: str) -> None:
+    def delete_summary(self, summary_id: str) -> None:
         raise NotImplementedError
 
     @abstractmethod

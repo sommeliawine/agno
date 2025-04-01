@@ -26,7 +26,7 @@ class MemoryDb(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def delete_memory(self, id: str) -> None:
+    def delete_memory(self, memory_id: str) -> None:
         raise NotImplementedError
 
     @abstractmethod

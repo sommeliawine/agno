@@ -1,7 +1,7 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import json
 from textwrap import dedent
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -9,10 +9,11 @@ from pydantic import BaseModel, Field
 from agno.models.base import Model
 from agno.models.message import Message
 from agno.utils.log import log_debug, log_error, log_info, log_warning
+from agno.utils.prompts import get_json_output_prompt
 from agno.utils.string import parse_response_model_str
 
 
-class SessionSummary(BaseModel):
+class SessionSummaryResponse(BaseModel):
     """Model for Session Summary."""
 
     summary: str = Field(
@@ -36,15 +37,15 @@ class SessionSummarizer:
     def update_model(self) -> None:
 
         if self.model.supports_native_structured_outputs:
-            self.model.response_format = SessionSummary
+            self.model.response_format = SessionSummaryResponse
             self.model.structured_outputs = True
 
         elif self.model.supports_json_schema_outputs:
             self.model.response_format = {
                 "type": "json_schema",
                 "json_schema": {
-                    "name": SessionSummary.__name__,
-                    "schema": SessionSummary.model_json_schema(),
+                    "name": SessionSummaryResponse.__name__,
+                    "schema": SessionSummaryResponse.model_json_schema(),
                 },
             }
         else:
@@ -54,7 +55,7 @@ class SessionSummarizer:
     def get_system_message(self, conversation: List[Message]) -> Message:
         if self.system_prompt is not None:
             return Message(role="system", content=self.system_prompt)
-        
+
         # -*- Return a system message for summarization
         system_prompt = dedent("""\
         Analyze the following conversation between a user and an assistant, and extract the following details:
@@ -72,38 +73,16 @@ class SessionSummarizer:
 
         system_prompt += "\n".join(conversation_messages)
 
-        if not self.model.supports_native_structured_outputs:
-            system_prompt += "\n\nProvide your output as a JSON containing the following fields:"
-            json_schema = SessionSummary.model_json_schema()
-            response_model_properties = {}
-            json_schema_properties = json_schema.get("properties")
-            if json_schema_properties is not None:
-                for field_name, field_properties in json_schema_properties.items():
-                    formatted_field_properties = {
-                        prop_name: prop_value
-                        for prop_name, prop_value in field_properties.items()
-                        if prop_name != "title"
-                    }
-                    response_model_properties[field_name] = formatted_field_properties
 
-            if len(response_model_properties) > 0:
-                system_prompt += "\n<json_fields>"
-                system_prompt += f"\n{json.dumps([key for key in response_model_properties.keys() if key != '$defs'])}"
-                system_prompt += "\n</json_fields>"
-                system_prompt += "\nHere are the properties for each field:"
-                system_prompt += "\n<json_field_properties>"
-                system_prompt += f"\n{json.dumps(response_model_properties, indent=2)}"
-                system_prompt += "\n</json_field_properties>"
+        if self.model.response_format == {"type": "json_object"}:
+            system_prompt += "\n" + get_json_output_prompt(SessionSummaryResponse)
 
-            system_prompt += "\nStart your response with `{` and end it with `}`."
-            system_prompt += "\nYour output will be passed to json.loads() to convert it to a Python object."
-            system_prompt += "\nMake sure it only contains valid JSON."
         return Message(role="system", content=system_prompt)
 
     def run(
         self,
         conversation: List[Message],
-    ) -> Optional[SessionSummary]:
+    ) -> Optional[SessionSummaryResponse]:
         if self.model is None:
             log_error("No model provided for summarizer")
             return
@@ -113,7 +92,7 @@ class SessionSummarizer:
         if conversation is None or len(conversation) == 0:
             log_info("No conversation provided for summarization.")
             return None
-        
+
         self.update_model()
 
         # Prepare the List of messages to send to the Model
@@ -128,32 +107,32 @@ class SessionSummarizer:
         log_debug("SessionSummarizer End", center=True)
 
         # If the model natively supports structured outputs, the parsed value is already in the structured format
-        if self.model.supports_native_structured_outputs and response.parsed is not None and isinstance(response.parsed, SessionSummary):
+        if self.model.supports_native_structured_outputs and response.parsed is not None and isinstance(response.parsed, SessionSummaryResponse):
             return response.parsed
 
         # Otherwise convert the response to the structured format
         if isinstance(response.content, str):
             try:
-                session_summary = parse_response_model_str(response.content, self.response_model)
+                session_summary: Optional[SessionSummaryResponse] = parse_response_model_str(response.content, SessionSummaryResponse)
 
                 # Update RunResponse
                 if session_summary is not None:
                     return session_summary
                 else:
-                    log_warning("Failed to convert session_summary response to SessionSummary")
+                    log_warning("Failed to convert session_summary response to SessionSummaryResponse")
             except Exception as e:
-                log_warning(f"Failed to convert session_summary response to SessionSummary: {e}")
+                log_warning(f"Failed to convert session_summary response to SessionSummaryResponse: {e}")
 
         return None
 
     async def arun(
         self,
         conversation: List[Message],
-    ) -> Optional[SessionSummary]:
+    ) -> Optional[SessionSummaryResponse]:
         if self.model is None:
             log_error("No model provided for summarizer")
             return
-        
+
         log_debug("SessionSummarizer Start", center=True)
 
         if conversation is None or len(conversation) == 0:
@@ -174,19 +153,19 @@ class SessionSummarizer:
         log_debug("SessionSummarizer End", center=True)
 
         # If the model natively supports structured outputs, the parsed value is already in the structured format
-        if self.model.supports_native_structured_outputs and response.parsed is not None and isinstance(response.parsed, SessionSummary):
+        if self.model.supports_native_structured_outputs and response.parsed is not None and isinstance(response.parsed, SessionSummaryResponse):
             return response.parsed
 
         # Otherwise convert the response to the structured format
         if isinstance(response.content, str):
             try:
-                session_summary = parse_response_model_str(response.content, self.response_model)
+                session_summary: Optional[SessionSummaryResponse] = parse_response_model_str(response.content, SessionSummaryResponse)
 
                 # Update RunResponse
                 if session_summary is not None:
                     return session_summary
                 else:
-                    log_warning("Failed to convert session_summary response to SessionSummary")
+                    log_warning("Failed to convert session_summary response to SessionSummaryResponse")
             except Exception as e:
-                log_warning(f"Failed to convert session_summary response to SessionSummary: {e}")
+                log_warning(f"Failed to convert session_summary response to SessionSummaryResponse: {e}")
         return None

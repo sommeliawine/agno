@@ -30,6 +30,7 @@ from agno.exceptions import ModelProviderError, StopAgentRun
 from agno.knowledge.agent import AgentKnowledge
 from agno.media import Audio, AudioArtifact, AudioResponse, File, Image, ImageArtifact, Video, VideoArtifact
 from agno.memory.agent import AgentMemory, AgentRun
+from agno.memory_v2.memory import Memory
 from agno.models.base import Model
 from agno.models.message import Citations, Message, MessageReferences
 from agno.models.response import ModelResponse, ModelResponseEvent
@@ -50,6 +51,7 @@ from agno.utils.log import (
     set_log_level_to_info,
 )
 from agno.utils.message import get_text_from_message
+from agno.utils.prompts import get_json_output_prompt
 from agno.utils.response import create_panel, escape_markdown_tags, format_tool_calls
 from agno.utils.safe_formatter import SafeFormatter
 from agno.utils.string import parse_response_model_str
@@ -89,7 +91,7 @@ class Agent:
     resolve_context: bool = True
 
     # --- Agent Memory ---
-    memory: Optional[AgentMemory] = None
+    memory: Optional[Union[AgentMemory, Memory]] = None
     # add_history_to_messages=true adds messages from the chat history to the messages list sent to the Model.
     add_history_to_messages: bool = False
     # Deprecated in favor of num_history_runs: Number of historical responses to add to the messages
@@ -264,7 +266,7 @@ class Agent:
         context: Optional[Dict[str, Any]] = None,
         add_context: bool = False,
         resolve_context: bool = True,
-        memory: Optional[AgentMemory] = None,
+        memory: Optional[Union[AgentMemory, Memory]] = None,
         add_history_to_messages: bool = False,
         num_history_responses: Optional[int] = None,
         num_history_runs: int = 3,
@@ -494,7 +496,8 @@ class Agent:
         self.set_agent_id()
         self.set_session_id()
         if self.memory is None:
-            self.memory = AgentMemory()
+            # A new instance of Memory (v2) is created if no memory is provided
+            self.memory = Memory()
         if self._formatter is None:
             self._formatter = SafeFormatter()
 
@@ -539,7 +542,11 @@ class Agent:
         # 1. Prepare the Agent for the run
         # 1.1 Initialize the Agent
         self.initialize_agent()
-        self.memory = cast(AgentMemory, self.memory)
+        if isinstance(self.memory, AgentMemory):
+            self.memory = cast(AgentMemory, self.memory)
+        else:
+            self.memory = cast(Memory, self.memory)
+
         # 1.2 Set streaming and stream intermediate steps
         self.stream = self.stream or (stream and self.is_streamable)
         self.stream_intermediate_steps = self.stream_intermediate_steps or (stream_intermediate_steps and self.stream)
@@ -767,20 +774,93 @@ class Agent:
             self.run_response.response_audio = model_response.audio
 
         # 9. Update Agent Memory
-        # Add the system message to the memory
-        if run_messages.system_message is not None:
-            self.memory.add_system_message(run_messages.system_message, system_message_role=self.system_message_role)
+        if isinstance(self.memory, AgentMemory):
+            # Add the system message to the memory
+            if run_messages.system_message is not None:
+                self.memory.add_system_message(run_messages.system_message, system_message_role=self.system_message_role)
 
-        # Build a list of messages that should be added to the AgentMemory
-        messages_for_memory: List[Message] = (
-            [run_messages.user_message] if run_messages.user_message is not None else []
-        )
-        # Add messages from messages_for_run after the last user message
-        for _rm in run_messages.messages[index_of_last_user_message:]:
-            if _rm.add_to_agent_memory:
-                messages_for_memory.append(_rm)
-        if len(messages_for_memory) > 0:
-            self.memory.add_messages(messages=messages_for_memory)
+            # Build a list of messages that should be added to the AgentMemory
+            messages_for_memory: List[Message] = (
+                [run_messages.user_message] if run_messages.user_message is not None else []
+            )
+            # Add messages from messages_for_run after the last user message
+            for _rm in run_messages.messages[index_of_last_user_message:]:
+                if _rm.add_to_agent_memory:
+                    messages_for_memory.append(_rm)
+            if len(messages_for_memory) > 0:
+                self.memory.add_messages(messages=messages_for_memory)
+
+            # Create an AgentRun object to add to memory
+            agent_run = AgentRun(response=self.run_response)
+            agent_run.message = run_messages.user_message
+
+            # Update the memories with the user message if needed
+            if (
+                self.memory.create_user_memories
+                and self.memory.update_user_memories_after_run
+                and run_messages.user_message is not None
+            ):
+                self.memory.update_memory(input=run_messages.user_message.get_content_string())
+
+            if messages is not None and len(messages) > 0:
+                for _im in messages:
+                    # Parse the message and convert to a Message object if possible
+                    mp = None
+                    if isinstance(_im, Message):
+                        mp = _im
+                    elif isinstance(_im, dict):
+                        try:
+                            mp = Message(**_im)
+                        except Exception as e:
+                            log_warning(f"Failed to validate message: {e}")
+                    else:
+                        log_warning(f"Unsupported message type: {type(_im)}")
+                        continue
+
+                    # Add the message to the AgentRun
+                    if mp:
+                        if agent_run.messages is None:
+                            agent_run.messages = []
+                        agent_run.messages.append(mp)
+                        if self.memory.create_user_memories and self.memory.update_user_memories_after_run:
+                            self.memory.update_memory(input=mp.get_content_string())
+                    else:
+                        log_warning("Unable to add message to memory")
+            # Add AgentRun to memory
+            self.memory.add_run(agent_run)
+            # Update the session summary if needed
+            if self.memory.create_session_summary and self.memory.update_session_summary_after_run:
+                self.memory.update_summary()
+        elif isinstance(self.memory, Memory):
+            if self.memory.make_user_memories and run_messages.user_message is not None:
+                self.memory.create_user_memory(message=run_messages.user_message, user_id=self.user_id)
+                
+                # TODO: Possibly do both of these in one step
+                if messages is not None and len(messages) > 0:
+                    parsed_messages = []
+                    for _im in messages:
+                        # Parse the message and convert to a Message object if possible
+                        if isinstance(_im, Message):
+                            parsed_messages.append(_im)
+                        elif isinstance(_im, dict):
+                            try:
+                                parsed_messages.append(Message(**_im))
+                            except Exception as e:
+                                log_warning(f"Failed to validate message: {e}")
+                        else:
+                            log_warning(f"Unsupported message type: {type(_im)}")
+                            continue
+                    
+                    if len(parsed_messages) > 0:
+                        if agent_run.messages is None:
+                            agent_run.messages = []
+                        agent_run.messages.extend(parsed_messages)
+                        self.memory.create_user_memories(messages=parsed_messages, user_id=self.user_id)
+                    else:
+                        log_warning("Unable to add messages to memory")
+
+            # Add AgentRun to memory
+            self.memory.add_run(agent_run)
 
         # Yield UpdatingMemory event
         if self.stream_intermediate_steps:
@@ -789,50 +869,11 @@ class Agent:
                 event=RunEvent.updating_memory,
             )
 
-        # Create an AgentRun object to add to memory
-        agent_run = AgentRun(response=self.run_response)
-        agent_run.message = run_messages.user_message
-
-        # Update the memories with the user message if needed
-        if (
-            self.memory.create_user_memories
-            and self.memory.update_user_memories_after_run
-            and run_messages.user_message is not None
-        ):
-            self.memory.update_memory(input=run_messages.user_message.get_content_string())
-
-        if messages is not None and len(messages) > 0:
-            for _im in messages:
-                # Parse the message and convert to a Message object if possible
-                mp = None
-                if isinstance(_im, Message):
-                    mp = _im
-                elif isinstance(_im, dict):
-                    try:
-                        mp = Message(**_im)
-                    except Exception as e:
-                        log_warning(f"Failed to validate message: {e}")
-                else:
-                    log_warning(f"Unsupported message type: {type(_im)}")
-                    continue
-
-                # Add the message to the AgentRun
-                if mp:
-                    if agent_run.messages is None:
-                        agent_run.messages = []
-                    agent_run.messages.append(mp)
-                    if self.memory.create_user_memories and self.memory.update_user_memories_after_run:
-                        self.memory.update_memory(input=mp.get_content_string())
-                else:
-                    log_warning("Unable to add message to memory")
-        # Add AgentRun to memory
-        self.memory.add_run(agent_run)
-        # Update the session summary if needed
-        if self.memory.create_session_summary and self.memory.update_session_summary_after_run:
-            self.memory.update_summary()
-
         # 10. Calculate session metrics
-        self.session_metrics = self.calculate_session_metrics(self.memory.messages)
+        if isinstance(self.memory, AgentMemory):
+            self.session_metrics = self.calculate_session_metrics(self.memory.messages)
+        else:
+            self.session_metrics = self.calculate_session_metrics(self.memory.runs[-1].messages)
 
         # 11. Save session to storage
         self.write_to_storage()
@@ -1060,7 +1101,10 @@ class Agent:
         # 1. Prepare the Agent for the run
         # 1.1 Initialize the Agent
         self.initialize_agent()
-        self.memory = cast(AgentMemory, self.memory)
+        if isinstance(self.memory, AgentMemory):
+            self.memory = cast(AgentMemory, self.memory)
+        else:
+            self.memory = cast(Memory, self.memory)
         # 1.2 Set streaming and stream intermediate steps
         self.stream = self.stream or (stream and self.is_streamable)
         self.stream_intermediate_steps = self.stream_intermediate_steps or (stream_intermediate_steps and self.stream)
@@ -1287,21 +1331,102 @@ class Agent:
         if self.stream and model_response.audio is not None:
             self.run_response.response_audio = model_response.audio
 
+        
         # 9. Update Agent Memory
-        # Add the system message to the memory
-        if run_messages.system_message is not None:
-            self.memory.add_system_message(run_messages.system_message, system_message_role=self.system_message_role)
+        if isinstance(self.memory, AgentMemory):
+            # Add the system message to the memory
+            if run_messages.system_message is not None:
+                self.memory.add_system_message(run_messages.system_message, system_message_role=self.system_message_role)
 
-        # Build a list of messages that should be added to the AgentMemory
-        messages_for_memory: List[Message] = (
-            [run_messages.user_message] if run_messages.user_message is not None else []
-        )
-        # Add messages from messages_for_run after the last user message
-        for _rm in run_messages.messages[index_of_last_user_message:]:
-            if _rm.add_to_agent_memory:
-                messages_for_memory.append(_rm)
-        if len(messages_for_memory) > 0:
-            self.memory.add_messages(messages=messages_for_memory)
+            # Build a list of messages that should be added to the AgentMemory
+            messages_for_memory: List[Message] = (
+                [run_messages.user_message] if run_messages.user_message is not None else []
+            )
+            # Add messages from messages_for_run after the last user message
+            for _rm in run_messages.messages[index_of_last_user_message:]:
+                if _rm.add_to_agent_memory:
+                    messages_for_memory.append(_rm)
+            if len(messages_for_memory) > 0:
+                self.memory.add_messages(messages=messages_for_memory)
+
+            # Create an AgentRun object to add to memory
+            agent_run = AgentRun(response=self.run_response)
+            agent_run.message = run_messages.user_message
+
+            # Update the memories with the user message if needed
+            if (
+                self.memory.create_user_memories
+                and self.memory.update_user_memories_after_run
+                and run_messages.user_message is not None
+            ):
+                await self.memory.aupdate_memory(input=run_messages.user_message.get_content_string())
+
+            if messages is not None and len(messages) > 0:
+                for _im in messages:
+                    # Parse the message and convert to a Message object if possible
+                    mp = None
+                    if isinstance(_im, Message):
+                        mp = _im
+                    elif isinstance(_im, dict):
+                        try:
+                            mp = Message(**_im)
+                        except Exception as e:
+                            log_warning(f"Failed to validate message: {e}")
+                    else:
+                        log_warning(f"Unsupported message type: {type(_im)}")
+                        continue
+
+                    # Add the message to the AgentRun
+                    if mp:
+                        if agent_run.messages is None:
+                            agent_run.messages = []
+                        agent_run.messages.append(mp)
+                        if self.memory.create_user_memories and self.memory.update_user_memories_after_run:
+                            await self.memory.aupdate_memory(input=mp.get_content_string())
+                    else:
+                        log_warning("Unable to add message to memory")
+            # Add AgentRun to memory
+            self.memory.add_run(agent_run)
+            # Update the session summary if needed
+            if self.memory.create_session_summary and self.memory.update_session_summary_after_run:
+                await self.memory.aupdate_summary()
+        elif isinstance(self.memory, Memory):
+            # TODO: This in a thread
+            
+            session_messages = []
+            if self.memory.make_user_memories and run_messages.user_message is not None:
+                await self.memory.acreate_user_memory(message=run_messages.user_message, user_id=self.user_id)
+                
+                # TODO: Possibly do both of these in one step
+                if messages is not None and len(messages) > 0:
+                    parsed_messages = []
+                    for _im in messages:
+                        # Parse the message and convert to a Message object if possible
+                        if isinstance(_im, Message):
+                            parsed_messages.append(_im)
+                        elif isinstance(_im, dict):
+                            try:
+                                parsed_messages.append(Message(**_im))
+                            except Exception as e:
+                                log_warning(f"Failed to validate message: {e}")
+                        else:
+                            log_warning(f"Unsupported message type: {type(_im)}")
+                            continue
+                    
+                    if len(parsed_messages) > 0:
+                        if session_messages is None:
+                            session_messages = []
+                        session_messages.extend(parsed_messages)
+                        await self.memory.acreate_user_memories(messages=parsed_messages, user_id=self.user_id)
+                    else:
+                        log_warning("Unable to add messages to memory")
+
+            # Add AgentRun to memory
+            self.memory.add_run(self.run_response)
+
+            # Update the session summary if needed
+            if self.memory.make_session_summaries:
+                await self.memory.acreate_session_summary()
 
         # Yield UpdatingMemory event
         if self.stream_intermediate_steps:
@@ -1310,48 +1435,11 @@ class Agent:
                 event=RunEvent.updating_memory,
             )
 
-        # Create an AgentRun object to add to memory
-        agent_run = AgentRun(response=self.run_response)
-        agent_run.message = run_messages.user_message
-        # Update the memories with the user message if needed
-        if (
-            self.memory.create_user_memories
-            and self.memory.update_user_memories_after_run
-            and run_messages.user_message is not None
-        ):
-            await self.memory.aupdate_memory(input=run_messages.user_message.get_content_string())
-        if messages is not None and len(messages) > 0:
-            for _im in messages:
-                # Parse the message and convert to a Message object if possible
-                mp = None
-                if isinstance(_im, Message):
-                    mp = _im
-                elif isinstance(_im, dict):
-                    try:
-                        mp = Message(**_im)
-                    except Exception as e:
-                        log_warning(f"Failed to validate message: {e}")
-                else:
-                    log_warning(f"Unsupported message type: {type(_im)}")
-                    continue
-
-                # Add the message to the AgentRun
-                if mp:
-                    if agent_run.messages is None:
-                        agent_run.messages = []
-                    agent_run.messages.append(mp)
-                    if self.memory.create_user_memories and self.memory.update_user_memories_after_run:
-                        await self.memory.aupdate_memory(input=mp.get_content_string())
-                else:
-                    log_warning("Unable to add message to memory")
-        # Add AgentRun to memory
-        self.memory.add_run(agent_run)
-        # Update the session summary if needed
-        if self.memory.create_session_summary and self.memory.update_session_summary_after_run:
-            await self.memory.aupdate_summary()
-
         # 10. Calculate session metrics
-        self.session_metrics = self.calculate_session_metrics(self.memory.messages)
+        if isinstance(self.memory, AgentMemory):
+            self.session_metrics = self.calculate_session_metrics(self.memory.messages)
+        else:
+            self.session_metrics = self.calculate_session_metrics(session_messages)
 
         # 11. Save session to storage
         self.write_to_storage()
@@ -1548,7 +1636,8 @@ class Agent:
         return rr
 
     def get_tools(self) -> Optional[List[Union[Toolkit, Callable, Function, Dict]]]:
-        self.memory = cast(AgentMemory, self.memory)
+        
+
         agent_tools: List[Union[Toolkit, Callable, Function, Dict]] = []
 
         # Add provided tools
@@ -1561,8 +1650,13 @@ class Agent:
             agent_tools.append(self.get_chat_history)
         if self.read_tool_call_history:
             agent_tools.append(self.get_tool_call_history)
-        if self.memory and self.memory.create_user_memories:
-            agent_tools.append(self.update_memory)
+        
+        if isinstance(self.memory, AgentMemory) and self.memory.create_user_memories:
+            self.memory = cast(AgentMemory, self.memory)
+            agent_tools.append(self.memory.update_memory)
+        else:
+            pass
+            # TODO: Should the agent decide to make memories?
 
         # Add tools for accessing knowledge
         if self.knowledge is not None or self.retriever is not None:
@@ -2000,91 +2094,6 @@ class Agent:
         self.session_id = str(uuid4())
         self.load_session(force=True)
 
-    def get_json_output_prompt(self) -> str:
-        """Return the JSON output prompt for the Agent.
-
-        This is added to the system prompt when the response_model is set and structured_outputs is False.
-        """
-        import json
-
-        json_output_prompt = "Provide your output as a JSON containing the following fields:"
-        if self.response_model is not None:
-            if isinstance(self.response_model, str):
-                json_output_prompt += "\n<json_fields>"
-                json_output_prompt += f"\n{self.response_model}"
-                json_output_prompt += "\n</json_fields>"
-            elif isinstance(self.response_model, list):
-                json_output_prompt += "\n<json_fields>"
-                json_output_prompt += f"\n{json.dumps(self.response_model)}"
-                json_output_prompt += "\n</json_fields>"
-            elif issubclass(self.response_model, BaseModel):
-                json_schema = self.response_model.model_json_schema()
-                if json_schema is not None:
-                    response_model_properties = {}
-                    json_schema_properties = json_schema.get("properties")
-                    if json_schema_properties is not None:
-                        for field_name, field_properties in json_schema_properties.items():
-                            formatted_field_properties = {
-                                prop_name: prop_value
-                                for prop_name, prop_value in field_properties.items()
-                                if prop_name != "title"
-                            }
-                            # Handle enum references
-                            if "allOf" in formatted_field_properties:
-                                ref = formatted_field_properties["allOf"][0].get("$ref", "")
-                                if ref.startswith("#/$defs/"):
-                                    enum_name = ref.split("/")[-1]
-                                    formatted_field_properties["enum_type"] = enum_name
-
-                            response_model_properties[field_name] = formatted_field_properties
-
-                    json_schema_defs = json_schema.get("$defs")
-                    if json_schema_defs is not None:
-                        response_model_properties["$defs"] = {}
-                        for def_name, def_properties in json_schema_defs.items():
-                            # Handle both regular object definitions and enums
-                            if "enum" in def_properties:
-                                # This is an enum definition
-                                response_model_properties["$defs"][def_name] = {
-                                    "type": "string",
-                                    "enum": def_properties["enum"],
-                                    "description": def_properties.get("description", ""),
-                                }
-                            else:
-                                # This is a regular object definition
-                                def_fields = def_properties.get("properties")
-                                formatted_def_properties = {}
-                                if def_fields is not None:
-                                    for field_name, field_properties in def_fields.items():
-                                        formatted_field_properties = {
-                                            prop_name: prop_value
-                                            for prop_name, prop_value in field_properties.items()
-                                            if prop_name != "title"
-                                        }
-                                        formatted_def_properties[field_name] = formatted_field_properties
-                                if len(formatted_def_properties) > 0:
-                                    response_model_properties["$defs"][def_name] = formatted_def_properties
-
-                    if len(response_model_properties) > 0:
-                        json_output_prompt += "\n<json_fields>"
-                        json_output_prompt += (
-                            f"\n{json.dumps([key for key in response_model_properties.keys() if key != '$defs'])}"
-                        )
-                        json_output_prompt += "\n</json_fields>"
-                        json_output_prompt += "\n\nHere are the properties for each field:"
-                        json_output_prompt += "\n<json_field_properties>"
-                        json_output_prompt += f"\n{json.dumps(response_model_properties, indent=2)}"
-                        json_output_prompt += "\n</json_field_properties>"
-            else:
-                log_warning(f"Could not build json schema for {self.response_model}")
-        else:
-            json_output_prompt += "Provide the output as JSON."
-
-        json_output_prompt += "\nStart your response with `{` and end it with `}`."
-        json_output_prompt += "\nYour output will be passed to json.loads() to convert it to a Python object."
-        json_output_prompt += "\nMake sure it only contains valid JSON."
-        return json_output_prompt
-
     def format_message_with_state_variables(self, msg: Any) -> Any:
         """Format a message with the session state variables."""
         if not isinstance(msg, str):
@@ -2133,7 +2142,7 @@ class Agent:
                     and (self.use_json_mode or self.structured_outputs is False)
                 )
             ):
-                sys_message_content += f"\n{self.get_json_output_prompt()}"
+                sys_message_content += f"\n{get_json_output_prompt(self.response_model)}"
 
             # type: ignore
             return Message(role=self.system_message_role, content=sys_message_content)
@@ -2278,7 +2287,7 @@ class Agent:
             self.model.supports_native_structured_outputs
             and (not self.use_json_mode or self.structured_outputs is True)
         ):
-            system_message_content += f"{self.get_json_output_prompt()}"
+            system_message_content += f"{get_json_output_prompt(self.response_model)}"
 
         # Return the system message
         return (
