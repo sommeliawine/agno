@@ -1830,8 +1830,7 @@ class Agent:
                 log_warning("Context is not a dict")
 
     def load_user_memories(self) -> None:
-        self.memory = cast(AgentMemory, self.memory)
-        if self.memory and self.memory.create_user_memories:
+        if isinstance(self.memory, AgentMemory) and self.memory.create_user_memories:
             if self.user_id is not None and self.memory.user_id is None:
                 self.memory.user_id = self.user_id
 
@@ -1840,6 +1839,10 @@ class Agent:
                 log_debug(f"Memories loaded for user: {self.user_id}")
             else:
                 log_debug("Memories loaded")
+        else:
+            # No loading needed for Memory
+            pass
+            
 
     def get_agent_data(self) -> Dict[str, Any]:
         agent_data: Dict[str, Any] = {}
@@ -1873,7 +1876,11 @@ class Agent:
         from time import time
 
         """Get an AgentSession object, which can be saved to the database"""
-        self.memory = cast(AgentMemory, self.memory)
+        if isinstance(self.memory, AgentMemory):
+            self.memory = cast(AgentMemory, self.memory)
+        else:
+            self.memory = cast(Memory, self.memory)
+
         self.session_id = cast(str, self.session_id)
         self.team_session_id = cast(str, self.team_session_id)
         self.agent_id = cast(str, self.agent_id)
@@ -1891,7 +1898,7 @@ class Agent:
 
     def load_agent_session(self, session: AgentSession):
         """Load the existing Agent from an AgentSession (from the database)"""
-        from agno.memory.memory import Memory
+        from agno.memory.memory import Memory as UserMemory
         from agno.memory.summary import SessionSummary
         from agno.utils.merge_dict import merge_dictionaries
 
@@ -1965,13 +1972,18 @@ class Agent:
             # Update the current extra_data with the extra_data from the database which is updated in place
             self.extra_data = session.extra_data
 
+        # If we haven't instantiated the memory yet, set it to the memory from the database
         if self.memory is None:
             self.memory = session.memory  # type: ignore
 
-        if not isinstance(self.memory, AgentMemory):
-            if isinstance(self.memory, dict):
+        if not (isinstance(self.memory, AgentMemory) or isinstance(self.memory, Memory)):
+            # Is it a dict of `AgentMemory`?
+            if isinstance(self.memory, dict) and "create_user_memories" in self.memory:
                 # Convert dict to AgentMemory
                 self.memory = AgentMemory(**self.memory)
+            elif isinstance(self.memory, dict) and "make_user_memories" in self.memory:
+                # Convert dict to Memory
+                self.memory = Memory(**self.memory)
             else:
                 raise TypeError(f"Expected memory to be a dict or AgentMemory, but got {type(self.memory)}")
 
@@ -1994,7 +2006,7 @@ class Agent:
                         log_warning(f"Failed to load session summary from memory: {e}")
                 if "memories" in session.memory:
                     try:
-                        self.memory.memories = [Memory.model_validate(m) for m in session.memory["memories"]]
+                        self.memory.memories = [UserMemory.model_validate(m) for m in session.memory["memories"]]
                     except Exception as e:
                         log_warning(f"Failed to load user memories: {e}")
             except Exception as e:
