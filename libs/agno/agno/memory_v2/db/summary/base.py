@@ -26,7 +26,7 @@ class SummaryDb(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def delete_summary(self, summary_id: str) -> None:
+    def delete_summary(self, session_id: str) -> None:
         raise NotImplementedError
 
     @abstractmethod

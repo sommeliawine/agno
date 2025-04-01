@@ -162,9 +162,9 @@ class SqliteSummaryDb(SummaryDb):
             else:
                 raise
 
-    def delete_summary(self, summary_id: str) -> None:
+    def delete_summary(self, session_id: str) -> None:
         with self.Session() as session:
-            stmt = delete(self.table).where(self.table.c.id == summary_id)
+            stmt = delete(self.table).where(self.table.c.id == session_id)
             session.execute(stmt)
             session.commit()
 

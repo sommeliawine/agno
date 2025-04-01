@@ -32,7 +32,7 @@ class MemoryRow(BaseModel):
 class SummaryRow(BaseModel):
     """Session Summary Row that is stored in the database"""
 
-    # id for this memory, auto-generated if not provided
+    # id for this summary
     id: Optional[str] = None
     summary: Dict[str, Any]
     user_id: Optional[str] = None

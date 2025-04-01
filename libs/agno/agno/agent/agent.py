@@ -92,6 +92,14 @@ class Agent:
 
     # --- Agent Memory ---
     memory: Optional[Union[AgentMemory, Memory]] = None
+    # Enable the agent to manage memories of the user
+    enable_agentic_memory: bool = False
+    # If True, make the agent create user memories at the end of runs
+    make_user_memories: bool = False
+    # If True, make the agent create/update session summaries at the end of runs
+    make_session_summaries: bool = False
+
+    # --- Agent History ---
     # add_history_to_messages=true adds messages from the chat history to the messages list sent to the Model.
     add_history_to_messages: bool = False
     # Deprecated in favor of num_history_runs: Number of historical responses to add to the messages
@@ -267,6 +275,9 @@ class Agent:
         add_context: bool = False,
         resolve_context: bool = True,
         memory: Optional[Union[AgentMemory, Memory]] = None,
+        enable_agentic_memory: bool = False,
+        make_user_memories: bool = False,
+        make_session_summaries: bool = False,
         add_history_to_messages: bool = False,
         num_history_responses: Optional[int] = None,
         num_history_runs: int = 3,
@@ -341,6 +352,10 @@ class Agent:
         self.resolve_context = resolve_context
 
         self.memory = memory
+        self.enable_agentic_memory = enable_agentic_memory
+        self.make_user_memories = make_user_memories
+        self.make_session_summaries = make_session_summaries
+
         self.add_history_to_messages = add_history_to_messages
         self.num_history_responses = num_history_responses
         self.num_history_runs = num_history_runs
@@ -498,6 +513,10 @@ class Agent:
         if self.memory is None:
             # A new instance of Memory (v2) is created if no memory is provided
             self.memory = Memory()
+        # Default to the agent's model if no model is provided
+        if self.memory.model is None:
+            self.memory.model = self.model
+
         if self._formatter is None:
             self._formatter = SafeFormatter()
 
@@ -557,7 +576,7 @@ class Agent:
         log_debug(f"Agent Run Start: {self.run_response.run_id}", center=True)
 
         # 2. Update the Model and resolve context
-        self.update_model()
+        self.update_model(async_mode=False)
         self.run_response.model = self.model.id if self.model is not None else None
         if self.context is not None and self.resolve_context:
             self.resolve_run_context()
@@ -831,10 +850,14 @@ class Agent:
             # Update the session summary if needed
             if self.memory.create_session_summary and self.memory.update_session_summary_after_run:
                 self.memory.update_summary()
+
+            # 10. Calculate session metrics
+            self.session_metrics = self.calculate_session_metrics(self.memory.messages)
         elif isinstance(self.memory, Memory):
-            if self.memory.make_user_memories and run_messages.user_message is not None:
-                self.memory.create_user_memory(message=run_messages.user_message, user_id=self.user_id)
-                
+            session_messages = []
+            if self.make_user_memories and run_messages.user_message is not None:
+                self.memory.create_user_memory(message=run_messages.user_message.get_content_string(), user_id=self.user_id)
+
                 # TODO: Possibly do both of these in one step
                 if messages is not None and len(messages) > 0:
                     parsed_messages = []
@@ -850,17 +873,24 @@ class Agent:
                         else:
                             log_warning(f"Unsupported message type: {type(_im)}")
                             continue
-                    
+
                     if len(parsed_messages) > 0:
-                        if agent_run.messages is None:
-                            agent_run.messages = []
-                        agent_run.messages.extend(parsed_messages)
+                        if session_messages is None:
+                            session_messages = []
+                        session_messages.extend(parsed_messages)
                         self.memory.create_user_memories(messages=parsed_messages, user_id=self.user_id)
                     else:
                         log_warning("Unable to add messages to memory")
 
             # Add AgentRun to memory
-            self.memory.add_run(agent_run)
+            self.memory.add_run(session_id=self.session_id, run=self.run_response)
+
+            # Update the session summary if needed
+            if self.make_session_summaries:
+                self.memory.create_session_summary(session_id=self.session_id, user_id=self.user_id)
+
+             # 10. Calculate session metrics
+            self.session_metrics = self.calculate_session_metrics(session_messages)
 
         # Yield UpdatingMemory event
         if self.stream_intermediate_steps:
@@ -869,11 +899,6 @@ class Agent:
                 event=RunEvent.updating_memory,
             )
 
-        # 10. Calculate session metrics
-        if isinstance(self.memory, AgentMemory):
-            self.session_metrics = self.calculate_session_metrics(self.memory.messages)
-        else:
-            self.session_metrics = self.calculate_session_metrics(self.memory.runs[-1].messages)
 
         # 11. Save session to storage
         self.write_to_storage()
@@ -958,7 +983,7 @@ class Agent:
         if retries is None:
             retries = self.retries
 
-        # Use stream overrided value when necessary
+        # Use stream override value when necessary
         if stream is None:
             stream = False if self.stream is None else self.stream
 
@@ -1115,7 +1140,7 @@ class Agent:
         log_debug(f"Async Agent Run Start: {self.run_response.run_id}", center=True, symbol="*")
 
         # 2. Update the Model and resolve context
-        self.update_model()
+        self.update_model(async_mode=True)
         self.run_response.model = self.model.id if self.model is not None else None
         if self.context is not None and self.resolve_context:
             self.resolve_run_context()
@@ -1331,7 +1356,7 @@ class Agent:
         if self.stream and model_response.audio is not None:
             self.run_response.response_audio = model_response.audio
 
-        
+
         # 9. Update Agent Memory
         if isinstance(self.memory, AgentMemory):
             # Add the system message to the memory
@@ -1390,13 +1415,15 @@ class Agent:
             # Update the session summary if needed
             if self.memory.create_session_summary and self.memory.update_session_summary_after_run:
                 await self.memory.aupdate_summary()
+
+            self.session_metrics = self.calculate_session_metrics(self.memory.messages)
         elif isinstance(self.memory, Memory):
             # TODO: This in a thread
-            
+
             session_messages = []
-            if self.memory.make_user_memories and run_messages.user_message is not None:
+            if self.make_user_memories and run_messages.user_message is not None:
                 await self.memory.acreate_user_memory(message=run_messages.user_message, user_id=self.user_id)
-                
+
                 # TODO: Possibly do both of these in one step
                 if messages is not None and len(messages) > 0:
                     parsed_messages = []
@@ -1412,7 +1439,7 @@ class Agent:
                         else:
                             log_warning(f"Unsupported message type: {type(_im)}")
                             continue
-                    
+
                     if len(parsed_messages) > 0:
                         if session_messages is None:
                             session_messages = []
@@ -1422,11 +1449,14 @@ class Agent:
                         log_warning("Unable to add messages to memory")
 
             # Add AgentRun to memory
-            self.memory.add_run(self.run_response)
+            self.memory.add_run(self.session_id, run=self.run_response)
 
             # Update the session summary if needed
-            if self.memory.make_session_summaries:
-                await self.memory.acreate_session_summary()
+            if self.make_session_summaries:
+                await self.memory.acreate_session_summary(session_id=self.session_id, user_id=self.user_id)
+
+            # 10. Calculate session metrics
+            self.session_metrics = self.calculate_session_metrics(session_messages)
 
         # Yield UpdatingMemory event
         if self.stream_intermediate_steps:
@@ -1435,11 +1465,6 @@ class Agent:
                 event=RunEvent.updating_memory,
             )
 
-        # 10. Calculate session metrics
-        if isinstance(self.memory, AgentMemory):
-            self.session_metrics = self.calculate_session_metrics(self.memory.messages)
-        else:
-            self.session_metrics = self.calculate_session_metrics(session_messages)
 
         # 11. Save session to storage
         self.write_to_storage()
@@ -1492,7 +1517,7 @@ class Agent:
         if retries is None:
             retries = self.retries
 
-        # Use stream overrided value when necessary
+        # Use stream override value when necessary
         if stream is None:
             stream = False if self.stream is None else self.stream
 
@@ -1635,8 +1660,8 @@ class Agent:
             rr.created_at = created_at
         return rr
 
-    def get_tools(self) -> Optional[List[Union[Toolkit, Callable, Function, Dict]]]:
-        
+    def get_tools(self, async_mode: bool = False) -> Optional[List[Union[Toolkit, Callable, Function, Dict]]]:
+
 
         agent_tools: List[Union[Toolkit, Callable, Function, Dict]] = []
 
@@ -1650,13 +1675,14 @@ class Agent:
             agent_tools.append(self.get_chat_history)
         if self.read_tool_call_history:
             agent_tools.append(self.get_tool_call_history)
-        
+
         if isinstance(self.memory, AgentMemory) and self.memory.create_user_memories:
-            self.memory = cast(AgentMemory, self.memory)
-            agent_tools.append(self.memory.update_memory)
-        else:
-            pass
-            # TODO: Should the agent decide to make memories?
+            agent_tools.append(self.update_memory)
+        elif isinstance(self.memory, Memory) and self.enable_agentic_memory:
+            if async_mode:
+                agent_tools.append(self.aupdate_user_memory)
+            else:
+                agent_tools.append(self.update_user_memory)
 
         # Add tools for accessing knowledge
         if self.knowledge is not None or self.retriever is not None:
@@ -1672,11 +1698,11 @@ class Agent:
 
         return agent_tools
 
-    def add_tools_to_model(self, model: Model) -> None:
+    def add_tools_to_model(self, model: Model, async_mode: bool = False) -> None:
         # Skip if functions_for_model is not None
         if self._functions_for_model is None or self._tools_for_model is None:
             # Get Agent tools
-            agent_tools = self.get_tools()
+            agent_tools = self.get_tools(async_mode=async_mode)
             if agent_tools is not None and len(agent_tools) > 0:
                 log_debug("Processing tools for model")
 
@@ -1741,7 +1767,7 @@ class Agent:
                 # Set functions on the model
                 model.set_functions(functions=self._functions_for_model)
 
-    def update_model(self) -> None:
+    def update_model(self, async_mode: bool = False) -> None:
         # Use the default Model (OpenAIChat) if no model is provided
         if self.model is None:
             try:
@@ -1792,7 +1818,7 @@ class Agent:
                 self.model.structured_outputs = False
 
         # Add tools to the Model
-        self.add_tools_to_model(model=self.model)
+        self.add_tools_to_model(model=self.model, async_mode=async_mode)
 
         # Set show_tool_calls on the Model
         if self.show_tool_calls is not None:
@@ -1842,7 +1868,7 @@ class Agent:
         else:
             # No loading needed for Memory
             pass
-            
+
 
     def get_agent_data(self) -> Dict[str, Any]:
         agent_data: Dict[str, Any] = {}
@@ -1898,8 +1924,7 @@ class Agent:
 
     def load_agent_session(self, session: AgentSession):
         """Load the existing Agent from an AgentSession (from the database)"""
-        from agno.memory.memory import Memory as UserMemory
-        from agno.memory.summary import SessionSummary
+
         from agno.utils.merge_dict import merge_dictionaries
 
         # Get the agent_id, user_id and session_id from the database
@@ -1981,36 +2006,57 @@ class Agent:
             if isinstance(self.memory, dict) and "create_user_memories" in self.memory:
                 # Convert dict to AgentMemory
                 self.memory = AgentMemory(**self.memory)
-            elif isinstance(self.memory, dict) and "make_user_memories" in self.memory:
+            elif isinstance(self.memory, dict):
                 # Convert dict to Memory
                 self.memory = Memory(**self.memory)
             else:
                 raise TypeError(f"Expected memory to be a dict or AgentMemory, but got {type(self.memory)}")
 
         if session.memory is not None:
-            try:
+            if isinstance(self.memory, AgentMemory):
+                try:
+                    if "runs" in session.memory:
+                        try:
+                            self.memory.runs = [AgentRun.model_validate(m) for m in session.memory["runs"]]
+                        except Exception as e:
+                            log_warning(f"Failed to load runs from memory: {e}")
+                    if "messages" in session.memory:
+                        try:
+                            self.memory.messages = [Message.model_validate(m) for m in session.memory["messages"]]
+                        except Exception as e:
+                            log_warning(f"Failed to load messages from memory: {e}")
+                    if "summary" in session.memory:
+                        from agno.memory.summary import SessionSummary
+                        try:
+                            self.memory.summary = SessionSummary.model_validate(session.memory["summary"])
+                        except Exception as e:
+                            log_warning(f"Failed to load session summary from memory: {e}")
+                    if "memories" in session.memory:
+                        from agno.memory.memory import Memory as UserMemory
+                        try:
+                            self.memory.memories = [UserMemory.model_validate(m) for m in session.memory["memories"]]
+                        except Exception as e:
+                            log_warning(f"Failed to load user memories: {e}")
+                except Exception as e:
+                    log_warning(f"Failed to load AgentMemory: {e}")
+            elif isinstance(self.memory, Memory):
                 if "runs" in session.memory:
                     try:
-                        self.memory.runs = [AgentRun.model_validate(m) for m in session.memory["runs"]]
+                        self.memory.runs = {session_id: [RunResponse.from_dict(m) for m in runs] for session_id, runs in session.memory["runs"].items()}
                     except Exception as e:
                         log_warning(f"Failed to load runs from memory: {e}")
-                if "messages" in session.memory:
-                    try:
-                        self.memory.messages = [Message.model_validate(m) for m in session.memory["messages"]]
-                    except Exception as e:
-                        log_warning(f"Failed to load messages from memory: {e}")
-                if "summary" in session.memory:
-                    try:
-                        self.memory.summary = SessionSummary.model_validate(session.memory["summary"])
-                    except Exception as e:
-                        log_warning(f"Failed to load session summary from memory: {e}")
                 if "memories" in session.memory:
+                    from agno.memory_v2.memory import UserMemory
                     try:
-                        self.memory.memories = [UserMemory.model_validate(m) for m in session.memory["memories"]]
+                        self.memory.memories = {user_id: {memory_id: UserMemory.from_dict(memory) for memory_id, memory in user_memories.items()} for user_id, user_memories in session.memory["memories"].items()}
                     except Exception as e:
                         log_warning(f"Failed to load user memories: {e}")
-            except Exception as e:
-                log_warning(f"Failed to load AgentMemory: {e}")
+                if "summaries" in session.memory:
+                    from agno.memory_v2.memory import SessionSummary
+                    try:
+                        self.memory.summaries = {user_id: {session_id: SessionSummary.from_dict(summary) for session_id, summary in user_session_summaries.items()} for user_id, user_session_summaries in session.memory["summaries"].items()}
+                    except Exception as e:
+                        log_warning(f"Failed to load session summaries: {e}")
         log_debug(f"-*- AgentSession loaded: {session.session_id}")
 
     def read_from_storage(self) -> Optional[AgentSession]:
@@ -2039,20 +2085,20 @@ class Agent:
     def add_introduction(self, introduction: str) -> None:
         """Add an introduction to the chat history"""
 
-        self.memory = cast(AgentMemory, self.memory)
-        if introduction is not None:
-            # Add an introduction as the first response from the Agent
-            if len(self.memory.runs) == 0:
-                self.memory.add_run(
-                    AgentRun(
-                        response=RunResponse(
-                            content=introduction,
-                            messages=[
-                                Message(role=self.model.assistant_message_role, content=introduction)  # type: ignore
-                            ],
+        if isinstance(self.memory, AgentMemory):
+            if introduction is not None:
+                # Add an introduction as the first response from the Agent
+                if len(self.memory.runs) == 0:
+                    self.memory.add_run(
+                        AgentRun(
+                            response=RunResponse(
+                                content=introduction,
+                                messages=[
+                                    Message(role=self.model.assistant_message_role, content=introduction)  # type: ignore
+                                ],
+                            )
                         )
                     )
-                )
 
     def load_session(self, force: bool = False) -> Optional[str]:
         """Load an existing session from the database and return the session_id.
@@ -2102,7 +2148,8 @@ class Agent:
         if self.model is not None:
             self.model.clear()
         if self.memory is not None:
-            self.memory.clear()
+            if isinstance(self.memory, AgentMemory):
+                self.memory.clear()
         self.session_id = str(uuid4())
         self.load_session(force=True)
 
@@ -2126,7 +2173,6 @@ class Agent:
         2. If create_default_system_message is False, return None.
         3. Build and return the default system message for the Agent.
         """
-        self.memory = cast(AgentMemory, self.memory)
 
         # 1. If the system_message is provided, use that.
         if self.system_message is not None:
@@ -2259,7 +2305,7 @@ class Agent:
             )
         # 3.3.11 Then add memories to the system prompt
         if self.memory:
-            if self.memory.create_user_memories:
+            if isinstance(self.memory, AgentMemory) and self.memory.create_user_memories:
                 if self.memory.memories and len(self.memory.memories) > 0:
                     system_message_content += (
                         "You have access to memories from previous interactions with the user that you can use:\n\n"
@@ -2282,12 +2328,56 @@ class Agent:
                     "You can add new memories using the `update_memory` tool.\n"
                     "If you use the `update_memory` tool, remember to pass on the response to the user.\n\n"
                 )
+            elif isinstance(self.memory, Memory) and (self.make_user_memories or self.enable_agentic_memory):
+                user_id = self.user_id
+                if not self.user_id:
+                    user_id = "default"
+                user_memories = self.memory.memories.get(user_id, {})
+                if user_memories and len(user_memories) > 0:
+                    system_message_content += (
+                        "You have access to memories from previous interactions with the user that you can use:\n\n"
+                    )
+                    system_message_content += "<memories_from_previous_interactions>"
+                    for _memory in user_memories.values():
+                        system_message_content += f"\n- {_memory.memory}"
+                    system_message_content += "\n</memories_from_previous_interactions>\n\n"
+                    system_message_content += (
+                        "Note: this information is from previous interactions and may be updated in this conversation. "
+                        "You should always prefer information from this conversation over the past memories.\n\n"
+                    )
+                else:
+                    system_message_content += (
+                        "You have the capability to retain memories from previous interactions with the user, "
+                        "but have not had any interactions with the user yet.\n"
+                        "If the user asks about previous memories, you can let them know that you dont have any memory about the user because you haven't had any interactions yet.\n\n"
+                    )
+
+                if self.enable_agentic_memory:
+                    system_message_content += (
+                        "You can add new memories using the `update_memory` tool.\n"
+                        "If you use the `update_memory` tool, remember to pass on the response to the user.\n\n"
+                    )
+
             # 3.3.12 Then add a summary of the interaction to the system prompt
-            if self.memory.create_session_summary:
+            if isinstance(self.memory, AgentMemory) and self.memory.create_session_summary:
                 if self.memory.summary is not None:
                     system_message_content += "Here is a brief summary of your previous interactions if it helps:\n\n"
                     system_message_content += "<summary_of_previous_interactions>\n"
                     system_message_content += str(self.memory.summary)
+                    system_message_content += "\n</summary_of_previous_interactions>\n\n"
+                    system_message_content += (
+                        "Note: this information is from previous interactions and may be outdated. "
+                        "You should ALWAYS prefer information from this conversation over the past summary.\n\n"
+                    )
+            elif isinstance(self.memory, Memory) and self.make_session_summaries:
+                user_id = self.user_id
+                if not self.user_id:
+                    user_id = "default"
+                session_summary = self.memory.summaries.get(user_id, {}).get(self.session_id, None)
+                if session_summary is not None:
+                    system_message_content += "Here is a brief summary of your previous interactions if it helps:\n\n"
+                    system_message_content += "<summary_of_previous_interactions>\n"
+                    system_message_content += session_summary
                     system_message_content += "\n</summary_of_previous_interactions>\n\n"
                     system_message_content += (
                         "Note: this information is from previous interactions and may be outdated. "
@@ -2463,7 +2553,6 @@ class Agent:
 
         # Initialize the RunMessages object
         run_messages = RunMessages()
-        self.memory = cast(AgentMemory, self.memory)
         self.run_response = cast(RunResponse, self.run_response)
 
         # 1. Add system message to run_messages
@@ -2505,10 +2594,15 @@ class Agent:
         # 3. Add history to run_messages
         if self.add_history_to_messages:
             from copy import deepcopy
-
-            history: List[Message] = self.memory.get_messages_from_last_n_runs(
-                last_n=self.num_history_runs, skip_role=self.system_message_role
-            )
+            history: List[Message] = []
+            if isinstance(self.memory, AgentMemory):
+                history = self.memory.get_messages_from_last_n_runs(
+                    last_n=self.num_history_runs, skip_role=self.system_message_role
+                )
+            elif isinstance(self.memory, Memory):
+                history = self.memory.get_messages_from_last_n_runs(
+                    session_id=self.session_id, last_n=self.num_history_runs, skip_role=self.system_message_role
+                )
             if len(history) > 0:
                 # Create a deep copy of the history messages to avoid modifying the original messages
                 history_copy = [deepcopy(msg) for msg in history]
@@ -2942,14 +3036,16 @@ class Agent:
 
         gen_session_name_prompt = "Conversation\n"
         messages_for_generating_session_name = []
-        self.memory = cast(AgentMemory, self.memory)
-        try:
-            message_pairs = self.memory.get_message_pairs()
-            for message_pair in message_pairs[:3]:
-                messages_for_generating_session_name.append(message_pair[0])
-                messages_for_generating_session_name.append(message_pair[1])
-        except Exception as e:
-            log_warning(f"Failed to generate name: {e}")
+        if isinstance(self.memory, AgentMemory):
+            try:
+                message_pairs = self.memory.get_message_pairs()
+                for message_pair in message_pairs[:3]:
+                    messages_for_generating_session_name.append(message_pair[0])
+                    messages_for_generating_session_name.append(message_pair[1])
+            except Exception as e:
+                log_warning(f"Failed to generate name: {e}")
+        elif isinstance(self.memory, Memory):
+            messages_for_generating_session_name = self.memory.get_messages_for_session(session_id=self.session_id)
 
         for message in messages_for_generating_session_name:
             gen_session_name_prompt += f"{message.role.upper()}: {message.content}\n"
@@ -3466,6 +3562,32 @@ class Agent:
     # Default Tools
     ###########################################################################
 
+    def update_user_memory(self, message: str) -> str:
+        """Use this function to update the user's memory.
+
+        Args:
+            message: The message to update the user's memory with.
+
+        Returns:
+            str: A string indicating the status of the update.
+        """
+        self.memory = cast(Memory, self.memory)
+        self.memory.create_user_memory(message=message, user_id=self.user_id)
+        return "Memory updated successfully"
+
+    async def aupdate_user_memory(self, message: str) -> str:
+        """Use this function to update the user's memory.
+
+        Args:
+            message: The message to update the user's memory with.
+
+        Returns:
+            str: A string indicating the status of the update.
+        """
+        self.memory = cast(Memory, self.memory)
+        await self.memory.acreate_user_memory(message=Message(role="user", content=message), user_id=self.user_id)
+        return "Memory updated successfully"
+
     def get_chat_history(self, num_chats: Optional[int] = None) -> str:
         """Use this function to get the chat history between the user and agent.
 
@@ -3486,18 +3608,32 @@ class Agent:
         import json
 
         history: List[Dict[str, Any]] = []
-        self.memory = cast(AgentMemory, self.memory)
-        all_chats = self.memory.get_message_pairs()
+        if isinstance(self.memory, AgentMemory):
+            all_chats = self.memory.get_message_pairs()
+        elif isinstance(self.memory, Memory):
+            all_chats = self.memory.get_messages_for_session(session_id=self.session_id)
+        else:
+            return ""
+
         if len(all_chats) == 0:
             return ""
 
-        chats_added = 0
-        for chat in all_chats[::-1]:
-            history.insert(0, chat[1].to_dict())
-            history.insert(0, chat[0].to_dict())
-            chats_added += 1
-            if num_chats is not None and chats_added >= num_chats:
-                break
+        if isinstance(self.memory, AgentMemory):
+            chats_added = 0
+            for chat in all_chats[::-1]:
+                history.insert(0, chat[1].to_dict())
+                history.insert(0, chat[0].to_dict())
+                chats_added += 1
+                if num_chats is not None and chats_added >= num_chats:
+                    break
+
+        elif isinstance(self.memory, Memory):
+            for chat in all_chats[::-1]:
+                history.insert(0, chat.to_dict())  # type: ignore
+
+            if num_chats is not None:
+                history = history[:num_chats]
+
         return json.dumps(history)
 
     def get_tool_call_history(self, num_calls: int = 3) -> str:
@@ -3516,8 +3652,12 @@ class Agent:
         """
         import json
 
-        self.memory = cast(AgentMemory, self.memory)
-        tool_calls = self.memory.get_tool_calls(session_id=self.session_id, num_calls=num_calls)
+        if isinstance(self.memory, AgentMemory):
+            tool_calls = self.memory.get_tool_calls(num_calls=num_calls)
+        elif isinstance(self.memory, Memory):
+            tool_calls = self.memory.get_tool_calls(session_id=self.session_id, num_calls=num_calls)
+        else:
+            return ""
         if len(tool_calls) == 0:
             return ""
         log_debug(f"tool_calls: {tool_calls}")

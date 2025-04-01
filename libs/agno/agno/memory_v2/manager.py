@@ -1,9 +1,8 @@
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-from agno.memory.memory import Memory
 from agno.models.base import Model
 from agno.models.message import Message
 from agno.utils.log import log_debug, log_error, log_warning
@@ -18,7 +17,7 @@ class MemoryUpdate(BaseModel):
         ...,
         description="The user memory to be stored or updated.",
     )
-    topics: Optional[str] = Field(None, description="The topics of the memory.")
+    topics: Optional[List[str]] = Field(None, description="The topics of the memory.")
     id: Optional[str] = Field(None, description="The id of the memory to update. ONLY use if you want to update an existing memory.")
 
 class MemoryUpdatesResponse(BaseModel):
@@ -56,14 +55,15 @@ class MemoryManager:
             self.model.response_format = {"type": "json_object"}
 
 
-    def get_system_message(self, messages: List[Message], existing_memories: Optional[List[Memory]] = None) -> Message:
+    def get_system_message(self, messages: List[Message], existing_memories: Optional[List[Dict[str, Any]]] = None) -> Message:
         if self.system_prompt is not None:
             return Message(role="system", content=self.system_prompt)
 
         # -*- Return a system message for the memory manager
         system_prompt_lines = [
             "Your task is to generate concise memories for the user's messages. "
-            "Create one or more memories that captures the key information provided by the user, as if you were storing it for future reference. "
+            "You can also decide that no new memories are needed."
+            "If you do create new memories, create one or more memories that captures the key information provided by the user, as if you were storing it for future reference. "
             "Each memory should be a brief, third-person statement that encapsulates the most important aspect of the user's input, without adding any extraneous information. "
             "Memories should include details that could personalize ongoing interactions with the user, such as:\n"
             "  - Personal facts: name, age, occupation, location, interests, preferences, etc.\n"
@@ -85,14 +85,12 @@ class MemoryManager:
         system_prompt_lines.append("</user_messages>")
 
         if existing_memories and len(existing_memories) > 0:
-            system_prompt_lines.extend(
-                [
-                    "\nExisting memories:",
-                    "<existing_memories>\n"
-                    + "\n".join([f"  - {m.memory}" for m in existing_memories])
-                    + "\n</existing_memories>",
-                ]
-            )
+            system_prompt_lines.append("<existing_memories>")
+            for existing_memory in existing_memories:
+                system_prompt_lines.append(f"ID: {existing_memory["memory_id"]}")
+                system_prompt_lines.append(f"Memory: {existing_memory["memory"]}")
+                system_prompt_lines.append("\n")
+            system_prompt_lines.append("</existing_memories>")
 
         if self.model.response_format == {"type": "json_object"}:
             system_prompt_lines.append(get_json_output_prompt(MemoryUpdatesResponse))
@@ -101,7 +99,7 @@ class MemoryManager:
     def run(
         self,
         messages: Optional[List[Message]] = None,
-        existing_memories: Optional[List[Memory]] = None,
+        existing_memories: Optional[List[Dict[str, Any]]] = None,
     ) -> Optional[MemoryUpdatesResponse]:
         if self.model is None:
             log_error("No model provided for memory manager")
@@ -143,23 +141,23 @@ class MemoryManager:
 
     async def arun(
         self,
-        message: Optional[str] = None,
-        **kwargs: Any,
+        messages: Optional[List[Message]] = None,
+        existing_memories: Optional[List[Dict[str, Any]]] = None,
     ) -> Optional[MemoryUpdatesResponse]:
         if self.model is None:
             log_error("No model provided for memory manager")
             return
         log_debug("MemoryManager Start", center=True)
 
-        # Prepare the List of messages to send to the Model
-        messages_for_model: List[Message] = [self.get_system_message()]
-        # Add the user prompt message
-        user_prompt_message = Message(role="user", content=message, **kwargs) if message else None
-        if user_prompt_message is not None:
-            messages_for_model += [user_prompt_message]
+        # Update the Model (set defaults, add logit etc.)
+        self.update_model()
 
-        # Set input message added with the memory
-        self.input_message = message
+        # Prepare the List of messages to send to the Model
+        messages_for_model: List[Message] = [
+            self.get_system_message(messages, existing_memories),
+            # For models that require a non-system message
+            Message(role="user", content="Create or update memories based on the user's messages."),
+        ]
 
         # Generate a response from the Model (includes running function calls)
         response = await self.model.aresponse(messages=messages_for_model)

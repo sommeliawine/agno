@@ -145,9 +145,9 @@ class PgSummaryDb(SummaryDb):
                 return self.upsert_summary(summary, create_and_retry=False)
             return None
 
-    def delete_summary(self, summary_id: str) -> None:
+    def delete_summary(self, session_id: str) -> None:
         with self.Session() as sess, sess.begin():
-            stmt = delete(self.table).where(self.table.c.id == summary_id)
+            stmt = delete(self.table).where(self.table.c.id == session_id)
             sess.execute(stmt)
 
     def drop_table(self) -> None:

@@ -142,19 +142,19 @@ class MongoSummaryDb(SummaryDb):
             logger.error(f"Error upserting summary: {e}")
             raise
 
-    def delete_summary(self, summary_id: str) -> None:
+    def delete_summary(self, session_id: str) -> None:
         """Delete a summary from the collection
         Args:
-            summary_id: ID of the summary to delete
+            session_id: ID of the summary to delete
         Returns:
             None
         """
         try:
-            result = self.collection.delete_one({"id": summary_id})
+            result = self.collection.delete_one({"id": session_id})
             if result.deleted_count == 0:
-                log_debug(f"No summary found with id: {summary_id}")
+                log_debug(f"No summary found with id: {session_id}")
             else:
-                log_debug(f"Successfully deleted summary with id: {summary_id}")
+                log_debug(f"Successfully deleted summary with id: {session_id}")
         except PyMongoError as e:
             logger.error(f"Error deleting summary: {e}")
             raise

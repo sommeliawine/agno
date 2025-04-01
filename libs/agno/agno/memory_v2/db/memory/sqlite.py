@@ -124,7 +124,7 @@ class SqliteMemoryDb(MemoryDb):
 
                 result = session.execute(stmt)
                 for row in result:
-                    memories.append(MemoryRow(id=row.id, user_id=row.user_id, memory=eval(row.memory)))
+                    memories.append(MemoryRow(id=row.id, user_id=row.user_id, memory=eval(row.memory), last_updated=row.updated_at or row.created_at))
         except SQLAlchemyError as e:
             log_debug(f"Exception reading from table: {e}")
             log_debug(f"Table does not exist: {self.table_name}")
