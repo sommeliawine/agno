@@ -18,3 +18,10 @@ class AgentRunCreate(BaseModel):
     run_id: Optional[str] = None
     run_data: Optional[Dict[str, Any]] = None
     agent_data: Optional[Dict[str, Any]] = None
+
+class AgentCreate(BaseModel):
+    """Data sent to API to create an Agent"""
+
+    name: Optional[str] = None
+    agent_id: str
+    agent_config: Dict[str, Any]
