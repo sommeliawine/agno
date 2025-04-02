@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from os import getenv
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, cast
 
 from pydantic import BaseModel, Field
 
@@ -420,7 +420,7 @@ class Memory:
         existing_memories = [
             {"memory_id": memory_id, "memory": memory.memory} for memory_id, memory in existing_memories.items()
         ]
-        memory_updates: MemoryUpdatesResponse = self.memory_manager.run(
+        memory_updates: MemoryUpdatesResponse = self.memory_manager.run(  # type: ignore
             messages=messages, existing_memories=existing_memories
         )
 
@@ -467,7 +467,7 @@ class Memory:
         if user_id is None:
             user_id = "default"
 
-        existing_memories = self.memories.get(user_id, {})
+        existing_memories = self.memories.get(user_id, {})  # type: ignore
         existing_memories = [
             {"memory_id": memory.memory_id, "memory": memory.memory} for memory_id, memory in existing_memories.items()
         ]
@@ -499,6 +499,8 @@ class Memory:
     def _upsert_db_memory(self, memory: MemoryRow) -> str:
         """Use this function to add a memory to the database."""
         try:
+            if not self.memory_db:
+                raise ValueError("Memory db not initialized")
             self.memory_db.upsert_memory(memory)
             return "Memory added successfully"
         except Exception as e:
@@ -508,6 +510,8 @@ class Memory:
     def _delete_db_memory(self, memory_id: str) -> str:
         """Use this function to delete a memory from the database."""
         try:
+            if not self.memory_db:
+                raise ValueError("Memory db not initialized")
             self.memory_db.delete_memory(memory_id=memory_id)
             return "Memory deleted successfully"
         except Exception as e:
@@ -517,6 +521,8 @@ class Memory:
     def _upsert_db_summary(self, summary: SummaryRow) -> str:
         """Use this function to add a summary to the database."""
         try:
+            if not self.summary_db:
+                raise ValueError("Summary db not initialized")
             self.summary_db.upsert_summary(summary)
             return "Summary added successfully"
         except Exception as e:
@@ -526,6 +532,8 @@ class Memory:
     def _delete_db_summary(self, session_id: str) -> str:
         """Use this function to delete a summary from the database."""
         try:
+            if not self.summary_db:
+                raise ValueError("Summary db not initialized")
             self.summary_db.delete_summary(session_id=session_id)
             return "Summary deleted successfully"
         except Exception as e:
@@ -546,7 +554,7 @@ class Memory:
             assistant_role = ["assistant", "model", "CHATBOT"]
 
         final_messages: List[Message] = []
-        session_runs = self.runs.get(session_id, [])
+        session_runs = self.runs.get(session_id, []) if self.runs else []
         for run_response in session_runs:
             if run_response and run_response.messages:
                 user_message_from_run = None
@@ -624,7 +632,7 @@ class Memory:
         """Returns a list of tool calls from the messages"""
 
         tool_calls = []
-        session_runs = self.runs.get(session_id, [])
+        session_runs = self.runs.get(session_id, []) if self.runs else []
         for run_response in session_runs[::-1]:
             if run_response and run_response.messages:
                 for message in run_response.messages:
@@ -659,6 +667,8 @@ class Memory:
         if not self.memories:
             return []
 
+        self.model = cast(Model, self.model)
+
         if user_id is None:
             user_id = "default"
 
@@ -681,6 +691,7 @@ class Memory:
             return self._get_last_n_memories(user_id=user_id, limit=limit)
 
     def _update_model_for_semantic_search(self) -> None:
+        self.model = cast(Model, self.model)
         if self.model.supports_native_structured_outputs:
             self.model.response_format = MemorySearchResponse
             self.model.structured_outputs = True
@@ -701,6 +712,8 @@ class Memory:
         if not self.memories:
             return []
 
+        self.model = cast(Model, self.model)
+
         self._update_model_for_semantic_search()
 
         log_debug("Searching for memories", center=True)
@@ -719,7 +732,7 @@ class Memory:
         system_message_str += "Only return the IDs of the memories that are most semantically similar to the query."
 
         if self.model.response_format == {"type": "json_object"}:
-            system_message_str += "\n" + get_json_output_prompt(MemorySearchResponse)
+            system_message_str += "\n" + get_json_output_prompt(MemorySearchResponse)  # type: ignore
 
         messages_for_model = [
             Message(role="system", content=system_message_str),
@@ -733,7 +746,7 @@ class Memory:
         response = self.model.response(messages=messages_for_model)
         log_debug("Search for memories complete", center=True)
 
-        memory_search = None
+        memory_search: Optional[MemorySearchResponse] = None
         # If the model natively supports structured outputs, the parsed value is already in the structured format
         if (
             self.model.supports_native_structured_outputs
@@ -745,9 +758,7 @@ class Memory:
         # Otherwise convert the response to the structured format
         if isinstance(response.content, str):
             try:
-                memory_search: Optional[MemorySearchResponse] = parse_response_model_str(
-                    response.content, MemorySearchResponse
-                )
+                memory_search = parse_response_model_str(response.content, MemorySearchResponse)  # type: ignore
 
                 # Update RunResponse
                 if memory_search is None:
@@ -775,28 +786,27 @@ class Memory:
         if not self.memories:
             return []
 
-        memories_to_return = self.memories.get(user_id, {})
+        memories_dict = self.memories.get(user_id, {})
+        sorted_memories_list = []
+
         # Sort memories by last_updated timestamp if available
-        if memories_to_return:
+        if memories_dict:
             # Convert to list of values for sorting
-            memories_list = list(memories_to_return.values())
+            memories_list = list(memories_dict.values())
 
             # Sort memories by last_updated timestamp (newest first)
             # If last_updated is None, place at the beginning of the list
-            sorted_memories = sorted(
+            sorted_memories_list = sorted(
                 memories_list,
                 key=lambda memory: memory.last_updated or datetime.min,
             )
-
-            # Replace the dict with the sorted list
-            memories_to_return = sorted_memories
         else:
-            memories_to_return = []
+            sorted_memories_list = []
 
         if limit is not None and limit > 0:
-            memories_to_return = memories_to_return[-limit:]
+            sorted_memories_list = sorted_memories_list[-limit:]
 
-        return memories_to_return
+        return sorted_memories_list
 
     def _get_first_n_memories(self, user_id: str, limit: Optional[int] = None) -> List[UserMemory]:
         """Get the oldest user memories.
@@ -810,28 +820,27 @@ class Memory:
         if not self.memories:
             return []
 
-        memories_to_return = self.memories.get(user_id, {})
+        memories_dict = self.memories.get(user_id, {})
+        sorted_memories_list = []
         # Sort memories by last_updated timestamp if available
-        if memories_to_return:
+        if memories_dict:
             # Convert to list of values for sorting
-            memories_list = list(memories_to_return.values())
+            memories_list = list(memories_dict.values())
 
             # Sort memories by last_updated timestamp (oldest first)
             # If last_updated is None, place at the end of the list
-            sorted_memories = sorted(
+            sorted_memories_list = sorted(
                 memories_list,
                 key=lambda memory: memory.last_updated or datetime.max,
             )
 
-            # Replace the dict with the sorted list
-            memories_to_return = sorted_memories
         else:
-            memories_to_return = []
+            sorted_memories_list = []
 
         if limit is not None and limit > 0:
-            memories_to_return = memories_to_return[:limit]
+            sorted_memories_list = sorted_memories_list[:limit]
 
-        return memories_to_return
+        return sorted_memories_list
 
     def clear(self) -> None:
         """Clears the memory."""
