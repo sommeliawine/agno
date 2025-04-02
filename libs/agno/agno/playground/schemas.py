@@ -4,6 +4,8 @@ from fastapi import UploadFile
 from pydantic import BaseModel
 
 from agno.agent import Agent
+from agno.memory.agent import AgentMemory
+from agno.memory_v2.memory import Memory
 from agno.playground.operator import format_tools
 from agno.team import Team
 
@@ -28,6 +30,15 @@ class AgentGetResponse(BaseModel):
 
     @classmethod
     def from_agent(self, agent: Agent) -> "AgentGetResponse":
+        if agent.memory:
+            if isinstance(agent.memory, AgentMemory) and agent.memory.db:
+                memory = {"name": agent.memory.db.__class__.__name__}
+            elif isinstance(agent.memory, Memory) and agent.memory.memory_db:
+                memory = {"name": agent.memory.memory_db.__class__.__name__}
+            else:
+                memory = None
+        else:
+            memory = None
         return AgentGetResponse(
             agent_id=agent.agent_id,
             name=agent.name,
@@ -38,7 +49,7 @@ class AgentGetResponse(BaseModel):
             ),
             add_context=agent.add_context,
             tools=format_tools(agent.get_tools()) if agent.get_tools() else None,
-            memory={"name": agent.memory.db.__class__.__name__} if agent.memory and agent.memory.db else None,
+            memory=memory,
             storage={"name": agent.storage.__class__.__name__} if agent.storage else None,
             knowledge={"name": agent.knowledge.__class__.__name__} if agent.knowledge else None,
             description=agent.description,

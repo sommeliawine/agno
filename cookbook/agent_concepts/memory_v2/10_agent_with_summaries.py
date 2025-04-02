@@ -27,15 +27,13 @@ agent = Agent(
     memory=memory,
     make_user_memories=True,
     make_session_summaries=True,
-    user_id=john_doe_id,
-    session_id=session_id_1,
 )
 
 agent.print_response(
-    "My name is John Doe and I like to hike in the mountains on weekends.", stream=True
+    "My name is John Doe and I like to hike in the mountains on weekends.", stream=True, user_id=john_doe_id, session_id=session_id_1
 )
 
-agent.print_response("What are my hobbies?", stream=True)
+agent.print_response("What are my hobbies?", stream=True, user_id=john_doe_id, session_id=session_id_1)
 
 
 memories = memory.get_user_memories(user_id=john_doe_id)
@@ -50,15 +48,11 @@ print(
 session_id_2 = "1002"
 mark_gonzales_id = "mark@example.com"
 
-# Update the agent to use the new user and session
-agent.user_id = mark_gonzales_id
-agent.session_id = session_id_2
-
 agent.print_response(
-    "My name is Mark Gonzales and I like anime and video games.", stream=True
+    "My name is Mark Gonzales and I like anime and video games.", stream=True, user_id=mark_gonzales_id, session_id=session_id_2
 )
 
-agent.print_response("What are my hobbies?", stream=True)
+agent.print_response("What are my hobbies?", stream=True, user_id=mark_gonzales_id, session_id=session_id_2)
 
 
 memories = memory.get_user_memories(user_id=mark_gonzales_id)

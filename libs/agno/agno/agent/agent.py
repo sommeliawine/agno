@@ -589,6 +589,7 @@ class Agent:
         run_messages: RunMessages = self.get_run_messages(
             message=message,
             session_id=session_id,
+            user_id=user_id,
             audio=audio,
             images=images,
             videos=videos,
@@ -1196,6 +1197,7 @@ class Agent:
         run_messages: RunMessages = self.get_run_messages(
             message=message,
             session_id=session_id,
+            user_id=user_id,
             audio=audio,
             images=images,
             videos=videos,
@@ -2150,12 +2152,12 @@ class Agent:
                     except Exception as e:
                         log_warning(f"Failed to load user memories: {e}")
                 if "summaries" in session.memory:
-                    from agno.memory_v2.memory import SessionSummary
+                    from agno.memory_v2.memory import SessionSummary as SessionSummaryV2
 
                     try:
                         self.memory.summaries = {
                             user_id: {
-                                session_id: SessionSummary.from_dict(summary)
+                                session_id: SessionSummaryV2.from_dict(summary)
                                 for session_id, summary in user_session_summaries.items()
                             }
                             for user_id, user_session_summaries in session.memory["summaries"].items()
@@ -2165,7 +2167,9 @@ class Agent:
         log_debug(f"-*- AgentSession loaded: {session.session_id}")
 
     def read_from_storage(
-        self, user_id: Optional[str] = None, session_id: Optional[str] = None
+        self,
+        session_id: str,
+        user_id: Optional[str] = None,
     ) -> Optional[AgentSession]:
         """Load the AgentSession from storage
 
@@ -2239,11 +2243,11 @@ class Agent:
                     self.add_introduction(self.introduction)
                 # write_to_storage() will create a new AgentSession
                 # and populate self.agent_session with the new session
-                self.write_to_storage(user_id=self.user_id, session_id=self.session_id)
+                self.write_to_storage(user_id=self.user_id, session_id=self.session_id)  # type: ignore
                 if self.agent_session is None:
                     raise Exception("Failed to create new AgentSession in storage")
                 log_debug(f"-*- Created AgentSession: {self.agent_session.session_id}")
-                self._log_agent_session(user_id=self.user_id, session_id=self.session_id)
+                self._log_agent_session(user_id=self.user_id, session_id=self.session_id)  # type: ignore
         return self.session_id
 
     def new_session(self) -> None:
@@ -2278,7 +2282,7 @@ class Agent:
         )
         return self._formatter.format(msg, **format_variables)  # type: ignore
 
-    def get_system_message(self, session_id: Optional[str] = None) -> Optional[Message]:
+    def get_system_message(self, session_id: str, user_id: Optional[str] = None) -> Optional[Message]:
         """Return the system message for the Agent.
 
         1. If the system_message is provided, use that.
@@ -2312,7 +2316,7 @@ class Agent:
                     and (self.use_json_mode or self.structured_outputs is False)
                 )
             ):
-                sys_message_content += f"\n{get_json_output_prompt(self.response_model)}"
+                sys_message_content += f"\n{get_json_output_prompt(self.response_model)}"  # type: ignore
 
             # type: ignore
             return Message(role=self.system_message_role, content=sys_message_content)
@@ -2441,16 +2445,15 @@ class Agent:
                     "If you use the `update_memory` tool, remember to pass on the response to the user.\n\n"
                 )
             elif isinstance(self.memory, Memory) and (self.make_user_memories or self.enable_agentic_memory):
-                user_id = self.user_id
-                if not self.user_id:
+                if not user_id:
                     user_id = "default"
-                user_memories = self.memory.memories.get(user_id, {})
+                user_memories = self.memory.memories.get(user_id, {})  # type: ignore
                 if user_memories and len(user_memories) > 0:
                     system_message_content += (
                         "You have access to memories from previous interactions with the user that you can use:\n\n"
                     )
                     system_message_content += "<memories_from_previous_interactions>"
-                    for _memory in user_memories.values():
+                    for _memory in user_memories.values():  # type: ignore
                         system_message_content += f"\n- {_memory.memory}"
                     system_message_content += "\n</memories_from_previous_interactions>\n\n"
                     system_message_content += (
@@ -2485,7 +2488,7 @@ class Agent:
                 user_id = self.user_id
                 if not self.user_id:
                     user_id = "default"
-                session_summary: SessionSummary = self.memory.summaries.get(user_id, {}).get(session_id, None)
+                session_summary: SessionSummary = self.memory.summaries.get(user_id, {}).get(session_id, None)  # type: ignore
                 if session_summary is not None:
                     system_message_content += "Here is a brief summary of your previous interactions if it helps:\n\n"
                     system_message_content += "<summary_of_previous_interactions>\n"
@@ -2501,7 +2504,7 @@ class Agent:
             self.model.supports_native_structured_outputs
             and (not self.use_json_mode or self.structured_outputs is True)
         ):
-            system_message_content += f"{get_json_output_prompt(self.response_model)}"
+            system_message_content += f"{get_json_output_prompt(self.response_model)}"  # type: ignore
 
         # Return the system message
         return (
@@ -2632,7 +2635,8 @@ class Agent:
         self,
         *,
         message: Optional[Union[str, List, Dict, Message]] = None,
-        session_id: Optional[str] = None,
+        session_id: str,
+        user_id: Optional[str] = None,
         audio: Optional[Sequence[Audio]] = None,
         images: Optional[Sequence[Image]] = None,
         videos: Optional[Sequence[Video]] = None,
@@ -2660,7 +2664,7 @@ class Agent:
 
         Typical usage:
         run_messages = self.get_run_messages(
-            message=message, session_id=session_id, audio=audio, images=images, videos=videos, files=files, messages=messages, **kwargs
+            message=message, session_id=session_id, user_id=user_id, audio=audio, images=images, videos=videos, files=files, messages=messages, **kwargs
         )
         """
 
@@ -2669,7 +2673,7 @@ class Agent:
         self.run_response = cast(RunResponse, self.run_response)
 
         # 1. Add system message to run_messages
-        system_message = self.get_system_message(session_id=session_id)
+        system_message = self.get_system_message(session_id=session_id, user_id=user_id)
         if system_message is not None:
             run_messages.system_message = system_message
             run_messages.messages.append(system_message)
@@ -3153,13 +3157,13 @@ class Agent:
         """Rename the Agent and save to storage"""
 
         # -*- Read from storage
-        self.read_from_storage(user_id=self.user_id, session_id=self.session_id)
+        self.read_from_storage(user_id=self.user_id, session_id=self.session_id)  # type: ignore
         # -*- Rename Agent
         self.name = name
         # -*- Save to storage
-        self.write_to_storage(user_id=self.user_id, session_id=self.session_id)
+        self.write_to_storage(user_id=self.user_id, session_id=self.session_id)  # type: ignore
         # -*- Log Agent session
-        self._log_agent_session(user_id=self.user_id, session_id=self.session_id)
+        self._log_agent_session(user_id=self.user_id, session_id=self.session_id)  # type: ignore
 
     def rename_session(self, session_name: str) -> None:
         """Rename the current session and save to storage"""
@@ -3169,9 +3173,9 @@ class Agent:
         # -*- Rename session
         self.session_name = session_name
         # -*- Save to storage
-        self.write_to_storage(user_id=self.user_id, session_id=self.session_id)
+        self.write_to_storage(user_id=self.user_id, session_id=self.session_id)  # type: ignore
         # -*- Log Agent session
-        self._log_agent_session(user_id=self.user_id, session_id=self.session_id)
+        self._log_agent_session(user_id=self.user_id, session_id=self.session_id)  # type: ignore
 
     def generate_session_name(self, session_id: Optional[str] = None) -> str:
         """Generate a name for the session using the first 6 messages from the memory"""
@@ -3218,16 +3222,16 @@ class Agent:
         """Automatically rename the session and save to storage"""
 
         # -*- Read from storage
-        self.read_from_storage(user_id=self.user_id, session_id=self.session_id)
+        self.read_from_storage(user_id=self.user_id, session_id=self.session_id)  # type: ignore
         # -*- Generate name for session
         generated_session_name = self.generate_session_name(session_id=self.session_id)
         log_debug(f"Generated Session Name: {generated_session_name}")
         # -*- Rename thread
         self.session_name = generated_session_name
         # -*- Save to storage
-        self.write_to_storage(user_id=self.user_id, session_id=self.session_id)
+        self.write_to_storage(user_id=self.user_id, session_id=self.session_id)  # type: ignore
         # -*- Log Agent Session
-        self._log_agent_session(user_id=self.user_id, session_id=self.session_id)
+        self._log_agent_session(user_id=self.user_id, session_id=self.session_id)  # type: ignore
 
     def delete_session(self, session_id: str):
         """Delete the current session and save to storage"""
@@ -3722,7 +3726,7 @@ class Agent:
     ###########################################################################
 
     def get_update_user_memory_function(self, user_id: Optional[str] = None, async_mode: bool = False) -> Callable:
-        def update_user_memory(self, message: str) -> str:
+        def update_user_memory(message: str) -> str:
             """Use this function to update the user's memory.
 
             Args:
@@ -3735,7 +3739,7 @@ class Agent:
             self.memory.create_user_memory(message=message, user_id=user_id)
             return "Memory updated successfully"
 
-        async def aupdate_user_memory(self, message: str) -> str:
+        async def aupdate_user_memory(message: str) -> str:
             """Use this function to update the user's memory.
 
             Args:
@@ -3753,8 +3757,8 @@ class Agent:
         else:
             return update_user_memory
 
-    def get_chat_history_function(self, session_id: Optional[str] = None) -> Callable:
-        def get_chat_history(self, num_chats: Optional[int] = None) -> str:
+    def get_chat_history_function(self, session_id: str) -> Callable:
+        def get_chat_history(num_chats: Optional[int] = None) -> str:
             """Use this function to get the chat history between the user and agent.
 
             Args:
@@ -3776,15 +3780,10 @@ class Agent:
             history: List[Dict[str, Any]] = []
             if isinstance(self.memory, AgentMemory):
                 all_chats = self.memory.get_message_pairs()
-            elif isinstance(self.memory, Memory):
-                all_chats = self.memory.get_messages_for_session(session_id=session_id)
-            else:
-                return ""
 
-            if len(all_chats) == 0:
-                return ""
+                if len(all_chats) == 0:
+                    return ""
 
-            if isinstance(self.memory, AgentMemory):
                 chats_added = 0
                 for chat in all_chats[::-1]:
                     history.insert(0, chat[1].to_dict())
@@ -3794,18 +3793,26 @@ class Agent:
                         break
 
             elif isinstance(self.memory, Memory):
+                all_chats = self.memory.get_messages_for_session(session_id=session_id)
+
+                if len(all_chats) == 0:
+                    return ""
+
                 for chat in all_chats[::-1]:
                     history.insert(0, chat.to_dict())  # type: ignore
 
                 if num_chats is not None:
                     history = history[:num_chats]
 
+            else:
+                return ""
+
             return json.dumps(history)
 
         return get_chat_history
 
-    def get_tool_call_history_function(self, session_id: Optional[str] = None) -> Callable:
-        def get_tool_call_history(self, num_calls: int = 3) -> str:
+    def get_tool_call_history_function(self, session_id: str) -> Callable:
+        def get_tool_call_history(num_calls: int = 3) -> str:
             """Use this function to get the tools called by the agent in reverse chronological order.
 
             Args:

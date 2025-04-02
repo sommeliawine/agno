@@ -30,11 +30,16 @@ class SessionSummaryResponse(BaseModel):
 @dataclass
 class SessionSummarizer:
     model: Optional[Model] = None
+    use_json_mode: Optional[bool] = None
+    
     system_prompt: Optional[str] = None
 
     def update_model(self) -> None:
         self.model = cast(Model, self.model)
-        if self.model.supports_native_structured_outputs:
+        if self.use_json_mode is not None and self.use_json_mode is True:
+            self.model.response_format = {"type": "json_object"}
+
+        elif self.model.supports_native_structured_outputs:
             self.model.response_format = SessionSummaryResponse
             self.model.structured_outputs = True
 

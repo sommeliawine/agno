@@ -9,6 +9,8 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from agno.agent.agent import Agent, RunResponse
 from agno.media import Audio, Image, Video
 from agno.media import File as FileMedia
+from agno.memory.agent import AgentMemory
+from agno.memory_v2.memory import Memory
 from agno.playground.operator import (
     format_tools,
     get_agent_by_id,
@@ -81,6 +83,16 @@ def get_async_playground_router(
             else:
                 provider = ""
 
+            if agent.memory:
+                if isinstance(agent.memory, AgentMemory) and agent.memory.db:
+                    memory = {"name": agent.memory.db.__class__.__name__}
+                elif isinstance(agent.memory, Memory) and agent.memory.memory_db:
+                    memory = {"name": agent.memory.memory_db.__class__.__name__}
+                else:
+                    memory = None
+            else:
+                memory = None
+
             agent_list.append(
                 AgentGetResponse(
                     agent_id=agent.agent_id,
@@ -92,7 +104,7 @@ def get_async_playground_router(
                     ),
                     add_context=agent.add_context,
                     tools=formatted_tools,
-                    memory={"name": agent.memory.db.__class__.__name__} if agent.memory and agent.memory.db else None,
+                    memory=memory,
                     storage={"name": agent.storage.__class__.__name__} if agent.storage else None,
                     knowledge={"name": agent.knowledge.__class__.__name__} if agent.knowledge else None,
                     description=agent.description,

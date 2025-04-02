@@ -15,8 +15,7 @@ class RecursiveChunking(ChunkingStrategy):
 
         if overlap > chunk_size * 0.15:
             warnings.warn(
-                f"High overlap: {overlap} > 15% of chunk size ({chunk_size}). "
-                "May cause slow processing.",
+                f"High overlap: {overlap} > 15% of chunk size ({chunk_size}). May cause slow processing.",
                 RuntimeWarning,
             )
 

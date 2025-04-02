@@ -37,13 +37,17 @@ class MemoryManager:
     """Model for Memory Manager"""
 
     model: Optional[Model] = None
+    use_json_mode: Optional[bool] = None
 
     # Provide the system prompt for the manager as a string
     system_prompt: Optional[str] = None
 
     def update_model(self) -> None:
         self.model = cast(Model, self.model)
-        if self.model.supports_native_structured_outputs:
+        if self.use_json_mode is not None and self.use_json_mode is True:
+            self.model.response_format = {"type": "json_object"}
+
+        elif self.model.supports_native_structured_outputs:
             self.model.response_format = MemoryUpdatesResponse
             self.model.structured_outputs = True
 
@@ -100,6 +104,8 @@ class MemoryManager:
 
         if self.model.response_format == {"type": "json_object"}:
             system_prompt_lines.append(get_json_output_prompt(MemoryUpdatesResponse))  # type: ignore
+
+        print(f"System prompt: {system_prompt_lines}")
         return Message(role="system", content="\n".join(system_prompt_lines))
 
     def run(

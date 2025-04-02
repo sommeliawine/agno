@@ -74,6 +74,8 @@ class SessionSummary:
 class Memory:
     # Model used for memories and summaries
     model: Optional[Model] = None
+    # When using internal response models, this will force JSON response mode from models that aren't that strong at structured outputs.
+    use_json_mode: Optional[bool] = None
 
     # Memories per memory ID per user
     memories: Optional[Dict[str, Dict[str, UserMemory]]] = None
@@ -98,6 +100,7 @@ class Memory:
     def __init__(
         self,
         model: Optional[Model] = None,
+        use_json_mode: Optional[bool] = None,
         memory_manager: Optional[MemoryManager] = None,
         summarizer: Optional[SessionSummarizer] = None,
         memory_db: Optional[MemoryDb] = None,
@@ -109,7 +112,8 @@ class Memory:
         self.summaries = {}
 
         self.model = model
-
+        self.use_json_mode = use_json_mode
+        
         if self.model is None:
             self.model = self.get_model()
 
@@ -123,18 +127,24 @@ class Memory:
         # We are making memories
         if self.model is not None:
             if self.memory_manager is None:
-                self.memory_manager = MemoryManager(model=self.model)
+                self.memory_manager = MemoryManager(model=self.model, use_json_mode=self.use_json_mode)
             # Set the model on the memory manager if it is not set
             if self.memory_manager.model is None:
                 self.memory_manager.model = self.model
 
+        if self.use_json_mode is not None:
+            self.memory_manager.use_json_mode = self.use_json_mode
+
         # We are making session summaries
         if self.model is not None:
             if self.summarizer is None:
-                self.summarizer = SessionSummarizer(model=self.model)
+                self.summarizer = SessionSummarizer(model=self.model, use_json_mode=self.use_json_mode)
             # Set the model on the summarizer if it is not set
             elif self.summarizer.model is None:
                 self.summarizer.model = self.model
+        
+        if self.use_json_mode is not None:
+            self.summarizer.use_json_mode = self.use_json_mode
 
         # Initialize the memory and summary databases
         if self.memory_db or self.summary_db:
