@@ -105,7 +105,6 @@ class MemoryManager:
         if self.model.response_format == {"type": "json_object"}:
             system_prompt_lines.append(get_json_output_prompt(MemoryUpdatesResponse))  # type: ignore
 
-        print(f"System prompt: {system_prompt_lines}")
         return Message(role="system", content="\n".join(system_prompt_lines))
 
     def run(
