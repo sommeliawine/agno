@@ -20,8 +20,8 @@ try:
 except ImportError:
     raise ImportError("`sqlalchemy` not installed. Please install it with `pip install sqlalchemy`")
 
-from agno.memory_v2.db.summary import SummaryDb
 from agno.memory_v2.db.schema import SummaryRow
+from agno.memory_v2.db.summary import SummaryDb
 from agno.utils.log import log_debug, log_info, logger
 
 
@@ -143,11 +143,15 @@ class SqliteSummaryDb(SummaryDb):
                     stmt = (
                         self.table.update()
                         .where(self.table.c.id == summary.id)
-                        .values(user_id=summary.user_id, summary=str(summary.summary), updated_at=text("CURRENT_TIMESTAMP"))
+                        .values(
+                            user_id=summary.user_id, summary=str(summary.summary), updated_at=text("CURRENT_TIMESTAMP")
+                        )
                     )
                 else:
                     # Insert new summary
-                    stmt = self.table.insert().values(id=summary.id, user_id=summary.user_id, summary=str(summary.summary))  # type: ignore
+                    stmt = self.table.insert().values(
+                        id=summary.id, user_id=summary.user_id, summary=str(summary.summary)
+                    )  # type: ignore
 
                 session.execute(stmt)
                 session.commit()

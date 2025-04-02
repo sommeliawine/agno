@@ -30,7 +30,7 @@ from agno.exceptions import ModelProviderError, StopAgentRun
 from agno.knowledge.agent import AgentKnowledge
 from agno.media import Audio, AudioArtifact, AudioResponse, File, Image, ImageArtifact, Video, VideoArtifact
 from agno.memory.agent import AgentMemory, AgentRun
-from agno.memory_v2.memory import Memory
+from agno.memory_v2.memory import Memory, SessionSummary
 from agno.models.base import Model
 from agno.models.message import Citations, Message, MessageReferences
 from agno.models.response import ModelResponse, ModelResponseEvent
@@ -796,7 +796,9 @@ class Agent:
         if isinstance(self.memory, AgentMemory):
             # Add the system message to the memory
             if run_messages.system_message is not None:
-                self.memory.add_system_message(run_messages.system_message, system_message_role=self.system_message_role)
+                self.memory.add_system_message(
+                    run_messages.system_message, system_message_role=self.system_message_role
+                )
 
             # Build a list of messages that should be added to the AgentMemory
             messages_for_memory: List[Message] = (
@@ -856,7 +858,9 @@ class Agent:
         elif isinstance(self.memory, Memory):
             session_messages = []
             if self.make_user_memories and run_messages.user_message is not None:
-                self.memory.create_user_memory(message=run_messages.user_message.get_content_string(), user_id=self.user_id)
+                self.memory.create_user_memory(
+                    message=run_messages.user_message.get_content_string(), user_id=self.user_id
+                )
 
                 # TODO: Possibly do both of these in one step
                 if messages is not None and len(messages) > 0:
@@ -889,7 +893,7 @@ class Agent:
             if self.make_session_summaries:
                 self.memory.create_session_summary(session_id=self.session_id, user_id=self.user_id)
 
-             # 10. Calculate session metrics
+            # 10. Calculate session metrics
             self.session_metrics = self.calculate_session_metrics(session_messages)
 
         # Yield UpdatingMemory event
@@ -898,7 +902,6 @@ class Agent:
                 content="Memory updated",
                 event=RunEvent.updating_memory,
             )
-
 
         # 11. Save session to storage
         self.write_to_storage()
@@ -1356,12 +1359,13 @@ class Agent:
         if self.stream and model_response.audio is not None:
             self.run_response.response_audio = model_response.audio
 
-
         # 9. Update Agent Memory
         if isinstance(self.memory, AgentMemory):
             # Add the system message to the memory
             if run_messages.system_message is not None:
-                self.memory.add_system_message(run_messages.system_message, system_message_role=self.system_message_role)
+                self.memory.add_system_message(
+                    run_messages.system_message, system_message_role=self.system_message_role
+                )
 
             # Build a list of messages that should be added to the AgentMemory
             messages_for_memory: List[Message] = (
@@ -1464,7 +1468,6 @@ class Agent:
                 content="Memory updated",
                 event=RunEvent.updating_memory,
             )
-
 
         # 11. Save session to storage
         self.write_to_storage()
@@ -1661,8 +1664,6 @@ class Agent:
         return rr
 
     def get_tools(self, async_mode: bool = False) -> Optional[List[Union[Toolkit, Callable, Function, Dict]]]:
-
-
         agent_tools: List[Union[Toolkit, Callable, Function, Dict]] = []
 
         # Add provided tools
@@ -1869,7 +1870,6 @@ class Agent:
             # No loading needed for Memory
             pass
 
-
     def get_agent_data(self) -> Dict[str, Any]:
         agent_data: Dict[str, Any] = {}
         if self.name is not None:
@@ -2027,12 +2027,14 @@ class Agent:
                             log_warning(f"Failed to load messages from memory: {e}")
                     if "summary" in session.memory:
                         from agno.memory.summary import SessionSummary
+
                         try:
                             self.memory.summary = SessionSummary.model_validate(session.memory["summary"])
                         except Exception as e:
                             log_warning(f"Failed to load session summary from memory: {e}")
                     if "memories" in session.memory:
                         from agno.memory.memory import Memory as UserMemory
+
                         try:
                             self.memory.memories = [UserMemory.model_validate(m) for m in session.memory["memories"]]
                         except Exception as e:
@@ -2042,19 +2044,35 @@ class Agent:
             elif isinstance(self.memory, Memory):
                 if "runs" in session.memory:
                     try:
-                        self.memory.runs = {session_id: [RunResponse.from_dict(m) for m in runs] for session_id, runs in session.memory["runs"].items()}
+                        self.memory.runs = {
+                            session_id: [RunResponse.from_dict(m) for m in runs]
+                            for session_id, runs in session.memory["runs"].items()
+                        }
                     except Exception as e:
                         log_warning(f"Failed to load runs from memory: {e}")
                 if "memories" in session.memory:
                     from agno.memory_v2.memory import UserMemory
+
                     try:
-                        self.memory.memories = {user_id: {memory_id: UserMemory.from_dict(memory) for memory_id, memory in user_memories.items()} for user_id, user_memories in session.memory["memories"].items()}
+                        self.memory.memories = {
+                            user_id: {
+                                memory_id: UserMemory.from_dict(memory) for memory_id, memory in user_memories.items()
+                            }
+                            for user_id, user_memories in session.memory["memories"].items()
+                        }
                     except Exception as e:
                         log_warning(f"Failed to load user memories: {e}")
                 if "summaries" in session.memory:
                     from agno.memory_v2.memory import SessionSummary
+
                     try:
-                        self.memory.summaries = {user_id: {session_id: SessionSummary.from_dict(summary) for session_id, summary in user_session_summaries.items()} for user_id, user_session_summaries in session.memory["summaries"].items()}
+                        self.memory.summaries = {
+                            user_id: {
+                                session_id: SessionSummary.from_dict(summary)
+                                for session_id, summary in user_session_summaries.items()
+                            }
+                            for user_id, user_session_summaries in session.memory["summaries"].items()
+                        }
                     except Exception as e:
                         log_warning(f"Failed to load session summaries: {e}")
         log_debug(f"-*- AgentSession loaded: {session.session_id}")
@@ -2149,6 +2167,8 @@ class Agent:
             self.model.clear()
         if self.memory is not None:
             if isinstance(self.memory, AgentMemory):
+                self.memory.clear()
+            elif isinstance(self.memory, Memory):
                 self.memory.clear()
         self.session_id = str(uuid4())
         self.load_session(force=True)
@@ -2373,11 +2393,11 @@ class Agent:
                 user_id = self.user_id
                 if not self.user_id:
                     user_id = "default"
-                session_summary = self.memory.summaries.get(user_id, {}).get(self.session_id, None)
+                session_summary: SessionSummary = self.memory.summaries.get(user_id, {}).get(self.session_id, None)
                 if session_summary is not None:
                     system_message_content += "Here is a brief summary of your previous interactions if it helps:\n\n"
                     system_message_content += "<summary_of_previous_interactions>\n"
-                    system_message_content += session_summary
+                    system_message_content += session_summary.summary
                     system_message_content += "\n</summary_of_previous_interactions>\n\n"
                     system_message_content += (
                         "Note: this information is from previous interactions and may be outdated. "
@@ -2594,6 +2614,7 @@ class Agent:
         # 3. Add history to run_messages
         if self.add_history_to_messages:
             from copy import deepcopy
+
             history: List[Message] = []
             if isinstance(self.memory, AgentMemory):
                 history = self.memory.get_messages_from_last_n_runs(

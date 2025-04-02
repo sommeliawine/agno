@@ -1,10 +1,8 @@
 from dataclasses import dataclass
-import json
 from textwrap import dedent
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from pydantic import BaseModel, Field
-
 
 from agno.models.base import Model
 from agno.models.message import Message
@@ -35,7 +33,7 @@ class SessionSummarizer:
     system_prompt: Optional[str] = None
 
     def update_model(self) -> None:
-
+        self.model = cast(Model, self.model)
         if self.model.supports_native_structured_outputs:
             self.model.response_format = SessionSummaryResponse
             self.model.structured_outputs = True
@@ -51,10 +49,10 @@ class SessionSummarizer:
         else:
             self.model.response_format = {"type": "json_object"}
 
-
     def get_system_message(self, conversation: List[Message]) -> Message:
         if self.system_prompt is not None:
             return Message(role="system", content=self.system_prompt)
+        self.model = cast(Model, self.model)
 
         # -*- Return a system message for summarization
         system_prompt = dedent("""\
@@ -73,9 +71,8 @@ class SessionSummarizer:
 
         system_prompt += "\n".join(conversation_messages)
 
-
         if self.model.response_format == {"type": "json_object"}:
-            system_prompt += "\n" + get_json_output_prompt(SessionSummaryResponse)
+            system_prompt += "\n" + get_json_output_prompt(SessionSummaryResponse)  # type: ignore
 
         return Message(role="system", content=system_prompt)
 
@@ -85,7 +82,7 @@ class SessionSummarizer:
     ) -> Optional[SessionSummaryResponse]:
         if self.model is None:
             log_error("No model provided for summarizer")
-            return
+            return None
 
         log_debug("SessionSummarizer Start", center=True)
 
@@ -107,13 +104,19 @@ class SessionSummarizer:
         log_debug("SessionSummarizer End", center=True)
 
         # If the model natively supports structured outputs, the parsed value is already in the structured format
-        if self.model.supports_native_structured_outputs and response.parsed is not None and isinstance(response.parsed, SessionSummaryResponse):
+        if (
+            self.model.supports_native_structured_outputs
+            and response.parsed is not None
+            and isinstance(response.parsed, SessionSummaryResponse)
+        ):
             return response.parsed
 
         # Otherwise convert the response to the structured format
         if isinstance(response.content, str):
             try:
-                session_summary: Optional[SessionSummaryResponse] = parse_response_model_str(response.content, SessionSummaryResponse)
+                session_summary: Optional[SessionSummaryResponse] = parse_response_model_str(  # type: ignore
+                    response.content, SessionSummaryResponse
+                )
 
                 # Update RunResponse
                 if session_summary is not None:
@@ -131,7 +134,7 @@ class SessionSummarizer:
     ) -> Optional[SessionSummaryResponse]:
         if self.model is None:
             log_error("No model provided for summarizer")
-            return
+            return None
 
         log_debug("SessionSummarizer Start", center=True)
 
@@ -153,13 +156,19 @@ class SessionSummarizer:
         log_debug("SessionSummarizer End", center=True)
 
         # If the model natively supports structured outputs, the parsed value is already in the structured format
-        if self.model.supports_native_structured_outputs and response.parsed is not None and isinstance(response.parsed, SessionSummaryResponse):
+        if (
+            self.model.supports_native_structured_outputs
+            and response.parsed is not None
+            and isinstance(response.parsed, SessionSummaryResponse)
+        ):
             return response.parsed
 
         # Otherwise convert the response to the structured format
         if isinstance(response.content, str):
             try:
-                session_summary: Optional[SessionSummaryResponse] = parse_response_model_str(response.content, SessionSummaryResponse)
+                session_summary: Optional[SessionSummaryResponse] = parse_response_model_str(  # type: ignore
+                    response.content, SessionSummaryResponse
+                )
 
                 # Update RunResponse
                 if session_summary is not None:

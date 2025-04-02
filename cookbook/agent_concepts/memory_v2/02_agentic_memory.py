@@ -1,9 +1,7 @@
-from agno.memory_v2.memory import Memory, UserMemory
+from agno.memory_v2.memory import Memory
 from agno.models.google.gemini import Gemini
 
-memory = Memory(
-    model=Gemini(id="gemini-2.0-flash-exp")
-)
+memory = Memory(model=Gemini(id="gemini-2.0-flash-exp"))
 
 john_doe_id = "john_doe@example.com"
 
@@ -17,7 +15,7 @@ memory.create_user_memory(
     Photography has become a recent passion of mine, especially capturing landscapes and street scenes. 
     I also like to meditate in the mornings and practice yoga to stay centered.
     """,
-    user_id=john_doe_id
+    user_id=john_doe_id,
 )
 
 

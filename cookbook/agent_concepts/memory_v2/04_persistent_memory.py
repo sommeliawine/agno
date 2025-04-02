@@ -5,16 +5,14 @@ Every time you run this, the `Memory` object will be re-initialized from the DB.
 """
 
 from typing import List
+
 from agno.memory_v2.db.memory.sqlite import SqliteMemoryDb
 from agno.memory_v2.db.schema import MemoryRow
 from agno.memory_v2.memory import Memory
 from agno.models.google.gemini import Gemini
 
 memory_db = SqliteMemoryDb(table_name="memory", db_file="tmp/memory.db")
-memory = Memory(
-    model=Gemini(id="gemini-2.0-flash-exp"),
-    memory_db=memory_db
-)
+memory = Memory(model=Gemini(id="gemini-2.0-flash-exp"), memory_db=memory_db)
 
 john_doe_id = "john_doe@example.com"
 
@@ -29,7 +27,7 @@ memory.create_user_memory(
     Photography has become a recent passion of mine, especially capturing landscapes and street scenes. 
     I also like to meditate in the mornings and practice yoga to stay centered.
     """,
-    user_id=john_doe_id
+    user_id=john_doe_id,
 )
 
 # Run this the 2nd time
@@ -41,7 +39,7 @@ memory.create_user_memory(
 # )
 
 
-memories:List[MemoryRow] = memory_db.read_memories()
+memories: List[MemoryRow] = memory_db.read_memories()
 print("All the DB memories:")
 for i, m in enumerate(memories):
-    print(f"{i}: {m.memory["memory"]} ({m.last_updated})")
+    print(f"{i}: {m.memory['memory']} ({m.last_updated})")

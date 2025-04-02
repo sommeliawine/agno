@@ -9,8 +9,8 @@ try:
 except ImportError:
     raise ImportError("`pymongo` not installed. Please install it with `pip install pymongo`")
 
-from agno.memory_v2.db.summary import SummaryDb
 from agno.memory_v2.db.schema import SummaryRow
+from agno.memory_v2.db.summary import SummaryDb
 from agno.utils.log import log_debug, logger
 
 

@@ -1,11 +1,11 @@
 from agno.memory_v2.manager import MemoryManager
-from agno.memory_v2.memory import Memory, UserMemory
+from agno.memory_v2.memory import Memory
 from agno.models.google.gemini import Gemini
 from agno.models.openai.chat import OpenAIChat
 
 memory = Memory(
     model=Gemini(id="gemini-2.0-flash-exp"),
-    memory_manager=MemoryManager(model=OpenAIChat(id="gpt-4o"))
+    memory_manager=MemoryManager(model=OpenAIChat(id="gpt-4o")),
 )
 
 john_doe_id = "john_doe@example.com"
@@ -20,7 +20,7 @@ memory.create_user_memory(
     Photography has become a recent passion of mine, especially capturing landscapes and street scenes. 
     I also like to meditate in the mornings and practice yoga to stay centered.
     """,
-    user_id=john_doe_id
+    user_id=john_doe_id,
 )
 
 

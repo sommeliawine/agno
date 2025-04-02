@@ -19,6 +19,7 @@ class MemoryRow(BaseModel):
     def generate_id(self) -> "MemoryRow":
         if self.id is None:
             from uuid import uuid4
+
             self.id = str(uuid4())
         return self
 
@@ -26,7 +27,6 @@ class MemoryRow(BaseModel):
         _dict = self.model_dump(exclude={"last_updated"})
         _dict["last_updated"] = self.last_updated.isoformat() if self.last_updated else None
         return _dict
-
 
 
 class SummaryRow(BaseModel):
@@ -44,6 +44,7 @@ class SummaryRow(BaseModel):
     def generate_id(self) -> "SummaryRow":
         if self.id is None:
             from uuid import uuid4
+
             self.id = str(uuid4())
         return self
 
@@ -51,4 +52,3 @@ class SummaryRow(BaseModel):
         _dict = self.model_dump(exclude={"last_updated"})
         _dict["last_updated"] = self.last_updated.isoformat() if self.last_updated else None
         return _dict
-

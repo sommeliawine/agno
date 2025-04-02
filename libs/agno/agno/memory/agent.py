@@ -273,7 +273,7 @@ class AgentMemory(BaseModel):
 
     def update_memory(self, input: str, force: bool = False) -> Optional[str]:
         """Creates a memory from a message and adds it to the memory db.
-        
+
         Args:
             input: The input message to create a memory from.
             force: If True, the memory will be created even if the classifier returns False.
@@ -314,7 +314,7 @@ class AgentMemory(BaseModel):
 
     async def aupdate_memory(self, input: str, force: bool = False) -> Optional[str]:
         """Creates a memory from a message and adds it to the memory db.
-        
+
         Args:
             input: The input message to create a memory from.
             force: If True, the memory will be created even if the classifier returns False.
