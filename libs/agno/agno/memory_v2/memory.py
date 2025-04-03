@@ -79,14 +79,13 @@ class Memory:
 
     # Memories per memory ID per user
     memories: Optional[Dict[str, Dict[str, UserMemory]]] = None
-
     # Manager to manage memories
     memory_manager: Optional[MemoryManager] = None
 
     # Session summaries per session per user
     summaries: Optional[Dict[str, Dict[str, SessionSummary]]] = None
     # Summarizer to generate session summaries
-    summarizer: Optional[SessionSummarizer] = None
+    summary_manager: Optional[SessionSummarizer] = None
 
     memory_db: Optional[MemoryDb] = None
     summary_db: Optional[SummaryDb] = None
@@ -113,13 +112,13 @@ class Memory:
 
         self.model = model
         self.use_json_mode = use_json_mode
-        
+
         if self.model is None:
             self.model = self.get_model()
 
         self.memory_manager = memory_manager
 
-        self.summarizer = summarizer
+        self.summary_manager = summarizer
 
         self.memory_db = memory_db
         self.summary_db = summary_db
@@ -137,14 +136,14 @@ class Memory:
 
         # We are making session summaries
         if self.model is not None:
-            if self.summarizer is None:
-                self.summarizer = SessionSummarizer(model=self.model, use_json_mode=self.use_json_mode)
-            # Set the model on the summarizer if it is not set
-            elif self.summarizer.model is None:
-                self.summarizer.model = self.model
-        
+            if self.summary_manager is None:
+                self.summary_manager = SessionSummarizer(model=self.model, use_json_mode=self.use_json_mode)
+            # Set the model on the summary_manager if it is not set
+            elif self.summary_manager.model is None:
+                self.summary_manager.model = self.model
+
         if self.use_json_mode is not None:
-            self.summarizer.use_json_mode = self.use_json_mode
+            self.summary_manager.use_json_mode = self.use_json_mode
 
         # Initialize the memory and summary databases
         if self.memory_db or self.summary_db:
@@ -270,10 +269,6 @@ class Memory:
                 )
             )
 
-        # TODO: Log the addition
-        # thread = threading.Thread(target=_do_log_summary, daemon=True)
-        # thread.start()
-
         return memory_id
 
     def replace_user_memory(
@@ -313,10 +308,6 @@ class Memory:
                 )
             )
 
-        # TODO: Log the addition
-        # thread = threading.Thread(target=_do_log_summary, daemon=True)
-        # thread.start()
-
         return memory_id
 
     def delete_user_memory(self, user_id: str, memory_id: str) -> None:
@@ -329,10 +320,6 @@ class Memory:
         if self.memory_db:
             self._delete_db_memory(memory_id=memory_id)
 
-        # TODO: Log the deletion
-        # thread = threading.Thread(target=_do_log_summary, daemon=True)
-        # thread.start()
-
     def delete_session_summary(self, user_id: str, session_id: str) -> None:
         """Delete a session summary for a given user id
         Args:
@@ -343,20 +330,16 @@ class Memory:
         if self.summary_db:
             self._delete_db_summary(session_id=session_id)
 
-        # TODO: Log the deletion
-        # thread = threading.Thread(target=_do_log_summary, daemon=True)
-        # thread.start()
-
     # -*- Agent Functions
     def create_session_summary(self, session_id: str, user_id: Optional[str] = None) -> Optional[SessionSummary]:
         """Creates a summary of the session"""
         if user_id is None:
             user_id = "default"
 
-        if not self.summarizer:
+        if not self.summary_manager:
             raise ValueError("Summarizer not initialized")
 
-        summary_response = self.summarizer.run(conversation=self.get_messages_for_session(session_id=session_id))
+        summary_response = self.summary_manager.run(conversation=self.get_messages_for_session(session_id=session_id))
         if summary_response is None:
             return None
         session_summary = SessionSummary(
@@ -374,9 +357,6 @@ class Memory:
                 )
             )
 
-        # TODO: Log the summary
-        # thread = threading.Thread(target=_do_log_summary, daemon=True)
-        # thread.start()
         return session_summary
 
     async def acreate_session_summary(self, session_id: str, user_id: Optional[str] = None) -> Optional[SessionSummary]:
@@ -384,10 +364,10 @@ class Memory:
         if user_id is None:
             user_id = "default"
 
-        if not self.summarizer:
+        if not self.summary_manager:
             raise ValueError("Summarizer not initialized")
 
-        summary_response = await self.summarizer.arun(conversation=self.get_messages_for_session(session_id=session_id))
+        summary_response = await self.summary_manager.arun(conversation=self.get_messages_for_session(session_id=session_id))
         if summary_response is None:
             return None
         session_summary = SessionSummary(
@@ -404,10 +384,6 @@ class Memory:
                     last_updated=session_summary.last_updated,
                 )
             )
-
-        # TODO: Log the summary
-        # import asyncio
-        # asyncio.create_task(_do_log_summary())
 
         return session_summary
 
@@ -869,7 +845,7 @@ class Memory:
 
         # Manually deepcopy fields that are known to be safe
         for field_name, field_value in self.__dict__.items():
-            if field_name not in ["memory_db", "summary_db", "memory_manager", "summarizer"]:
+            if field_name not in ["memory_db", "summary_db", "memory_manager", "summary_manager"]:
                 try:
                     setattr(copied_obj, field_name, deepcopy(field_value))
                 except Exception as e:
@@ -879,6 +855,6 @@ class Memory:
         copied_obj.memory_db = self.memory_db
         copied_obj.summary_db = self.summary_db
         copied_obj.memory_manager = self.memory_manager
-        copied_obj.summarizer = self.summarizer
+        copied_obj.summary_manager = self.summary_manager
 
         return copied_obj

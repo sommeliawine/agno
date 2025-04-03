@@ -31,7 +31,7 @@ class SessionSummaryResponse(BaseModel):
 class SessionSummarizer:
     model: Optional[Model] = None
     use_json_mode: Optional[bool] = None
-    
+
     system_prompt: Optional[str] = None
 
     def update_model(self) -> None:
@@ -86,7 +86,7 @@ class SessionSummarizer:
         conversation: List[Message],
     ) -> Optional[SessionSummaryResponse]:
         if self.model is None:
-            log_error("No model provided for summarizer")
+            log_error("No model provided for summary_manager")
             return None
 
         log_debug("SessionSummarizer Start", center=True)
@@ -138,7 +138,7 @@ class SessionSummarizer:
         conversation: List[Message],
     ) -> Optional[SessionSummaryResponse]:
         if self.model is None:
-            log_error("No model provided for summarizer")
+            log_error("No model provided for summary_manager")
             return None
 
         log_debug("SessionSummarizer Start", center=True)
