@@ -160,7 +160,15 @@ class Team:
 
     # --- History ---
     # Memory for the team
-    memory: Optional[TeamMemory] = None
+    memory: Optional[Union[TeamMemory, Memory]] = None
+    # Enable the agent to manage memories of the user
+    enable_agentic_memory: bool = False
+    # If True, make the agent create user memories at the end of runs
+    make_user_memories: bool = False
+    # If True, make the agent create/update session summaries at the end of runs
+    make_session_summaries: bool = False
+
+    # --- Agent History ---
     # If True, enable the team history
     enable_team_history: bool = False
     # Number of interactions from history
@@ -218,7 +226,10 @@ class Team:
         response_model: Optional[Type[BaseModel]] = None,
         use_json_mode: bool = False,
         parse_response: bool = True,
-        memory: Optional[TeamMemory] = None,
+        memory: Optional[Union[TeamMemory, Memory]] = None,
+        enable_agentic_memory: bool = False,
+        make_user_memories: bool = False,
+        make_session_summaries: bool = False,
         enable_team_history: bool = False,
         num_of_interactions_from_history: int = 3,
         storage: Optional[Storage] = None,
@@ -272,6 +283,11 @@ class Team:
         self.parse_response = parse_response
 
         self.memory = memory
+        
+        self.enable_agentic_memory = enable_agentic_memory
+        self.make_user_memories = make_user_memories
+        self.make_session_summaries = make_session_summaries
+        
         self.enable_team_history = enable_team_history
         self.num_of_interactions_from_history = num_of_interactions_from_history
 
@@ -449,7 +465,13 @@ class Team:
 
         # Initialize memory if not yet set
         if self.memory is None:
-            self.memory = TeamMemory()
+            # A new instance of Memory (v2) is created if no memory is provided
+            self.memory = Memory()
+            
+        # Default to the team's model if no model is provided
+        if isinstance(self.memory, Memory):
+            if self.memory.model is None:
+                self.memory.model = self.model
 
         # Read existing session from storage
         if self.context is not None:
@@ -626,8 +648,10 @@ class Team:
         7. Parse any structured outputs
         8. Log the team run
         """
-
-        self.memory = cast(TeamMemory, self.memory)
+        if isinstance(self.memory, TeamMemory):
+            self.memory = cast(TeamMemory, self.memory)
+        else:
+            self.memory = cast(Memory, self.memory)
         self.model = cast(Model, self.model)
 
         # 1. Reason about the task(s) if reasoning is enabled
@@ -693,35 +717,38 @@ class Team:
         run_response.metrics = self._aggregate_metrics_from_messages(messages_for_run_response)
 
         # 4. Update Team Memory
-        # Add the system message to the memory
-        if run_messages.system_message is not None:
-            self.memory.add_system_message(run_messages.system_message, system_message_role="system")  # type: ignore
+        if isinstance(self.memory, TeamMemory):
+            # Add the system message to the memory
+            if run_messages.system_message is not None:
+                self.memory.add_system_message(run_messages.system_message, system_message_role="system")  # type: ignore
 
-        # Build a list of messages that should be added to the AgentMemory
-        messages_for_memory: List[Message] = (
-            [run_messages.user_message] if run_messages.user_message is not None else []
-        )
+            # Build a list of messages that should be added to the AgentMemory
+            messages_for_memory: List[Message] = (
+                [run_messages.user_message] if run_messages.user_message is not None else []
+            )
 
-        for _rm in run_messages.messages[index_of_last_user_message:]:
-            if _rm.add_to_agent_memory:
-                messages_for_memory.append(_rm)
-        if len(messages_for_memory) > 0:
-            self.memory.add_messages(messages=messages_for_memory)  # type: ignore
+            for _rm in run_messages.messages[index_of_last_user_message:]:
+                if _rm.add_to_agent_memory:
+                    messages_for_memory.append(_rm)
+            if len(messages_for_memory) > 0:
+                self.memory.add_messages(messages=messages_for_memory)  # type: ignore
 
-        team_run = TeamRun(response=run_response)
-        team_run.message = run_messages.user_message
+            team_run = TeamRun(response=run_response)
+            team_run.message = run_messages.user_message
 
-        # Update the memories with the user message if needed
-        if (
-            self.memory is not None
-            and self.memory.create_user_memories
-            and self.memory.update_user_memories_after_run
-            and run_messages.user_message is not None
-        ):
-            self.memory.update_memory(input=run_messages.user_message.get_content_string())  # type: ignore
+            # Update the memories with the user message if needed
+            if (
+                self.memory is not None
+                and self.memory.create_user_memories
+                and self.memory.update_user_memories_after_run
+                and run_messages.user_message is not None
+            ):
+                self.memory.update_memory(input=run_messages.user_message.get_content_string())  # type: ignore
 
-        # Add AgentRun to memory
-        self.memory.add_team_run(team_run)  # type: ignore
+            # Add AgentRun to memory
+            self.memory.add_team_run(team_run)  # type: ignore
+            self.session_metrics = self._calculate_session_metrics(self.memory.messages)
+            self.full_team_session_metrics = self._calculate_full_team_session_metrics(self.memory.messages)
 
         # 5. Calculate session metrics
         self.session_metrics = self._calculate_session_metrics()
@@ -3191,13 +3218,12 @@ class Team:
     # Helpers
     ###########################################################################
 
-    def _calculate_session_metrics(self) -> SessionMetrics:
-        self.memory = cast(TeamMemory, self.memory)
+    def _calculate_session_metrics(self, messages: List[Message]) -> SessionMetrics:
         session_metrics = SessionMetrics()
         assistant_message_role = self.model.assistant_message_role if self.model is not None else "assistant"
 
         # Get metrics of the team-agent's messages
-        for m in self.memory.messages:
+        for m in messages:
             if m.role == assistant_message_role and m.metrics is not None:
                 session_metrics += m.metrics
 
