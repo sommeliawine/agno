@@ -48,6 +48,7 @@ class SqliteMemoryDb(MemoryDb):
             db_file: The database file to connect to.
             db_engine: The database engine to use.
         """
+        self.db_file = db_file
         _engine: Optional[Engine] = db_engine
         if _engine is None and db_url is not None:
             _engine = create_engine(db_url)
@@ -74,7 +75,7 @@ class SqliteMemoryDb(MemoryDb):
         self.Session = scoped_session(sessionmaker(bind=self.db_engine))
         # Database table for memories
         self.table: Table = self.get_table()
-        
+
     def __str__(self) -> str:
         return f"SqliteMemoryDb(table_name={self.table_name}, db_file={self.db_file})"
 
