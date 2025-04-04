@@ -14,18 +14,12 @@ try:
 except ImportError:
     raise ImportError("`hashlib` not installed. Please install using `pip install hashlib`")
 try:
-    from pymongo import MongoClient, errors
+    from pymongo import MongoClient, errors, AsyncMongoClient
     from pymongo.collection import Collection
     from pymongo.operations import SearchIndexModel
 
 except ImportError:
     raise ImportError("`pymongo` not installed. Please install using `pip install pymongo`")
-
-try:
-    from motor.motor_asyncio import AsyncIOMotorClient
-
-except ImportError:
-    raise ImportError("`motor` not installed. Please instsall using `pip install motor`")
 
 
 class MongoDb(VectorDb):
@@ -97,7 +91,7 @@ class MongoDb(VectorDb):
         self._db = None
         self._collection = None
 
-        self._async_client: Optional[AsyncIOMotorClient] = None
+        self._async_client: Optional[AsyncMongoClient] = None
         self._async_db = None
         self._async_collection = None
 
@@ -120,11 +114,11 @@ class MongoDb(VectorDb):
         return self._client
 
     @property
-    async def async_client(self) -> AsyncIOMotorClient:
+    async def async_client(self) -> AsyncMongoClient:
         """Get or create the async MongoDB client."""
         if self._async_client is None:
             log_debug("Creating Async MongoDB Client")
-            self._async_client = AsyncIOMotorClient(
+            self._async_client = AsyncMongoClient(
                 self.connection_string,
                 maxPoolSize=self.kwargs.get("maxPoolSize", 100),
                 retryWrites=self.kwargs.get("retryWrites", True),
@@ -321,9 +315,12 @@ class MongoDb(VectorDb):
                     break
             except Exception as e:
                 logger.error(f"Error checking index status asynchronously: {e}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
 
             if time.time() - start_time > self.wait_until_index_ready:
-                raise TimeoutError("Timeout waiting for search index to become ready.")
+                raise TimeoutError(
+                    "Timeout waiting for search index to become ready.")
             await asyncio.sleep(1)
 
     def collection_exists(self) -> bool:
@@ -666,16 +663,24 @@ class MongoDb(VectorDb):
 
             pipeline.append({"$project": {"embedding": 0}})
 
-            # Fix: Properly await the aggregation cursor
-            cursor = collection.aggregate(pipeline)
-            results = await cursor.to_list(length=limit)
+            # With AsyncMongoClient, aggregate() returns a coroutine that resolves to a cursor
+            # We need to await it first to get the cursor
+            cursor = await collection.aggregate(pipeline)
+
+            # Now we can iterate over the cursor to get results
+            results = []
+            async for doc in cursor:
+                results.append(doc)
+                if len(results) >= limit:
+                    break
 
             docs = [
                 Document(
                     id=str(doc["_id"]),
                     name=doc.get("name"),
                     content=doc["content"],
-                    meta_data={**doc.get("meta_data", {}), "score": doc.get("score", 0.0)},
+                    meta_data={**doc.get("meta_data", {}),
+                            "score": doc.get("score", 0.0)},
                 )
                 for doc in results
             ]
@@ -685,6 +690,9 @@ class MongoDb(VectorDb):
 
         except Exception as e:
             logger.error(f"Error during async search: {e}")
+            # Include traceback for better debugging
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             raise
 
     async def async_drop(self) -> None:
