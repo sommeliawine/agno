@@ -1,6 +1,8 @@
 from textwrap import dedent
 
 from agno.agent import Agent
+from agno.memory_v2 import Memory
+from agno.memory_v2.db.memory.postgres import PostgresMemoryDb
 from agno.models.anthropic import Claude
 from agno.models.google.gemini import Gemini
 from agno.models.openai import OpenAIChat
@@ -11,7 +13,13 @@ from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.tools.exa import ExaTools
 from agno.tools.yfinance import YFinanceTools
 
+
 db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
+
+memory_db = PostgresMemoryDb(table_name="memory", db_url=db_url)
+
+# No need to set the model, it gets set by the agent to the agent's model
+memory = Memory(memory_db=memory_db)
 
 
 file_agent = Agent(
@@ -22,6 +30,7 @@ file_agent = Agent(
     storage=PostgresStorage(
         table_name="agent_sessions", db_url=db_url, auto_upgrade_schema=True
     ),
+    memory=memory,
     instructions=[
         "You are an AI agent that can analyze files.",
         "You are given a file and you need to answer questions about the file.",
@@ -38,6 +47,7 @@ video_agent = Agent(
     storage=PostgresStorage(
         table_name="agent_sessions", db_url=db_url, auto_upgrade_schema=True
     ),
+    memory=memory,
     add_history_to_messages=True,
     add_datetime_to_instructions=True,
     show_tool_calls=True,
@@ -52,6 +62,7 @@ audio_agent = Agent(
     storage=PostgresStorage(
         table_name="agent_sessions", db_url=db_url, auto_upgrade_schema=True
     ),
+    memory=memory,
     add_history_to_messages=True,
     add_datetime_to_instructions=True,
     show_tool_calls=True,
@@ -67,6 +78,7 @@ web_agent = Agent(
     instructions=[
         "You are an experienced web researcher and news analyst! 🔍",
     ],
+    memory=memory,
     show_tool_calls=True,
     markdown=True,
     storage=PostgresStorage(
@@ -90,6 +102,7 @@ finance_agent = Agent(
         "Include key metrics: P/E ratio, market cap, 52-week range",
         "Analyze trading patterns and volume trends",
     ],
+    memory=memory,
     show_tool_calls=True,
     markdown=True,
 )
@@ -99,6 +112,7 @@ simple_agent = Agent(
     role="Simple agent",
     model=OpenAIChat(id="gpt-4o"),
     instructions=["You are a simple agent"],
+    memory=memory,
 )
 
 research_agent = Agent(
@@ -108,6 +122,7 @@ research_agent = Agent(
     instructions=["You are a research agent"],
     tools=[DuckDuckGoTools(), ExaTools()],
     agent_id="research_agent",
+    memory=memory,
 )
 
 research_team = Team(
@@ -123,6 +138,7 @@ research_team = Team(
     instructions=[
         "You are the lead researcher of a research team! 🔍",
     ],
+    memory=memory,
     add_datetime_to_instructions=True,
     show_tool_calls=True,
     markdown=True,
@@ -148,6 +164,7 @@ multimodal_team = Team(
     instructions=[
         "You are the lead editor of a prestigious financial news desk! 📰",
     ],
+    memory=memory,
     storage=PostgresStorage(
         table_name="multimodal_team",
         db_url=db_url,
@@ -155,6 +172,7 @@ multimodal_team = Team(
         auto_upgrade_schema=True,
     ),
 )
+
 agent_team = Team(
     name="Financial News Team",
     description="A team of agents that search the web for financial news and analyze it.",
@@ -190,8 +208,10 @@ agent_team = Team(
         mode="team",
         auto_upgrade_schema=True,
     ),
+    memory=memory,
     expected_output="A good financial news report.",
-    context="use USD as currency",
+    context={"currency": "use USD as currency"},
+    add_context=True,
 )
 
 app = Playground(

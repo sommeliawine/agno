@@ -5,7 +5,6 @@ Every time you run this, the `Memory` object will be re-initialized from the DB.
 """
 
 from agno.agent.agent import Agent
-from agno.memory_v2.db.memory.sqlite import SqliteMemoryDb
 from agno.memory_v2.memory import Memory
 from agno.models.google.gemini import Gemini
 
