@@ -143,11 +143,22 @@ class Memory:
         summarizer: Optional[SessionSummarizer] = None,
         memory_db: Optional[MemoryDb] = None,
         summary_db: Optional[SummaryDb] = None,
+        memories: Optional[Dict[str, Dict[str, UserMemory]]] = None,
+        summaries: Optional[Dict[str, Dict[str, SessionSummary]]] = None,
+        runs: Optional[Dict[str, List[Union[RunResponse, TeamRunResponse]]]] = None,
+        team_context: Optional[Dict[str, TeamContext]] = None,
         monitoring: bool = False,
         debug_mode: bool = False,
     ):
-        self.memories = {}
-        self.summaries = {}
+        self.memories = memories or {}
+        self.summaries = summaries or {}
+        self.runs = runs or {}
+        self.team_context = team_context or {}
+        
+        self.monitoring = monitoring
+        self.debug_mode = debug_mode
+
+        self.model = model
 
         self.model = model
         self.use_json_mode = use_json_mode
@@ -902,9 +913,6 @@ class Memory:
 
     # -*- Team Functions
     def add_interaction_to_team_context(self, session_id: str, member_name: str, task: str, run_response: RunResponse) -> None:
-
-        if self.team_context is None:
-            self.team_context = {}
         if not session_id in self.team_context:
             self.team_context[session_id] = TeamContext()
         self.team_context[session_id].member_interactions.append(
@@ -917,8 +925,6 @@ class Memory:
         log_debug(f"Updated team context with member name: {member_name}")
 
     def set_team_context_text(self, session_id: str, text: str) -> None:
-        if self.team_context is None:
-            self.team_context = {}
         if not session_id in self.team_context:
             self.team_context[session_id] = TeamContext()
 
@@ -928,7 +934,7 @@ class Memory:
             self.team_context[session_id] = TeamContext(text=text)
 
     def get_team_context_str(self, session_id: str) -> str:
-        if self.team_context is None:
+        if not self.team_context:
             return ""
         session_team_context = self.team_context.get(session_id, None)
         if session_team_context and session_team_context.text:
@@ -936,7 +942,7 @@ class Memory:
         return ""
 
     def get_team_member_interactions_str(self, session_id: str) -> str:
-        if self.team_context is None:
+        if not self.team_context:
             return ""
         team_member_interactions_str = ""
         session_team_context = self.team_context.get(session_id, None)
@@ -952,7 +958,7 @@ class Memory:
         return team_member_interactions_str
 
     def get_team_context_images(self, session_id: str) -> List[ImageArtifact]:
-        if self.team_context is None:
+        if not self.team_context:
             return []
         images = []
         session_team_context = self.team_context.get(session_id, None)
@@ -963,7 +969,7 @@ class Memory:
         return images
 
     def get_team_context_videos(self, session_id: str) -> List[VideoArtifact]:
-        if self.team_context is None:
+        if not self.team_context:
             return []
         videos = []
         session_team_context = self.team_context.get(session_id, None)
@@ -974,7 +980,7 @@ class Memory:
         return videos
 
     def get_team_context_audio(self, session_id: str) -> List[AudioArtifact]:
-        if self.team_context is None:
+        if not self.team_context:
             return []
         audio = []
         session_team_context = self.team_context.get(session_id, None)
