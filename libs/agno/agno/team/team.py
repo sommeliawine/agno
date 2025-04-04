@@ -28,6 +28,7 @@ from agno.agent import Agent
 from agno.agent.metrics import SessionMetrics
 from agno.exceptions import ModelProviderError, RunCancelledException
 from agno.media import Audio, AudioArtifact, AudioResponse, File, Image, ImageArtifact, Video, VideoArtifact
+from agno.memory.agent import AgentMemory
 from agno.memory_v2.memory import Memory, TeamContext, SessionSummary
 from agno.memory.team import TeamMemory, TeamRun
 from agno.models.base import Model
@@ -337,11 +338,6 @@ class Team:
             self.team_id = str(uuid4())
         return self.team_id
 
-    def _set_session_id(self) -> str:
-        if self.session_id is None or self.session_id == "":
-            self.session_id = str(uuid4())
-        return self.session_id
-
     def _set_debug(self) -> None:
         if self.debug_mode or getenv("AGNO_DEBUG", "false").lower() == "true":
             self.debug_mode = True
@@ -365,7 +361,7 @@ class Team:
         if telemetry_env is not None:
             self.telemetry = telemetry_env.lower() == "true"
 
-    def _initialize_member(self, member: Union["Team", Agent]):
+    def _initialize_member(self, member: Union["Team", Agent], session_id: str):
         # Set debug mode for all members
         if self.debug_mode:
             member.debug_mode = True
@@ -374,13 +370,13 @@ class Team:
         if self.markdown:
             member.markdown = True
 
-        member.team_session_id = self.session_id
+        member.team_session_id = session_id
         member.team_id = self.team_id
 
         if member.name is None and member.role is None:
             log_warning("Team member name and role is undefined.")
 
-    def _initialize_team(self) -> None:
+    def _initialize_team(self, session_id: str) -> None:
         self._set_storage_mode()
 
         # Set debug mode
@@ -395,18 +391,14 @@ class Team:
         # Set the team ID if not yet set
         self._set_team_id()
 
-        # Set the session ID if not yet set
-        self._set_session_id()
-
         log_debug(f"Team ID: {self.team_id}", center=True)
-        log_debug(f"Session ID: {self.session_id}", center=True)
 
         # Initialize formatter
         if self._formatter is None:
             self._formatter = SafeFormatter()
 
         for member in self.members:
-            self._initialize_member(member)
+            self._initialize_member(member, session_id=session_id)
 
     @overload
     def run(
@@ -458,7 +450,6 @@ class Team:
         **kwargs: Any,
     ) -> Union[TeamRunResponse, Iterator[TeamRunResponse]]:
         """Run the Team and return the response."""
-        self._initialize_team()
 
         retries = retries or 3
         if retries < 1:
@@ -467,10 +458,18 @@ class Team:
         # Use the default user_id and session_id when necessary
         if user_id is None:
             user_id = self.user_id
-        if session_id is None:
-            session_id = self.session_id
+
+        if session_id is None or session_id == "":
+            if not (self.session_id is None or self.session_id == ""):
+                session_id = self.session_id
+            else:
+                session_id = str(uuid4())
 
         session_id = cast(str, session_id)
+
+        log_debug(f"Session ID: {session_id}", center=True)
+
+        self._initialize_team(session_id=session_id)
 
         show_tool_calls = self.show_tool_calls
 
@@ -491,7 +490,7 @@ class Team:
         if self.context is not None:
             self._resolve_run_context()
 
-        if self.response_model is not None and self.parse_response:
+        if self.response_model is not None and self.parse_response and stream is True:
             # Disable stream if response_model is set
             stream = False
             log_warning("Disabling stream as response_model is set")
@@ -532,7 +531,7 @@ class Team:
                 _tools.append(self.get_team_history_function(session_id=session_id))
 
             if isinstance(self.memory, Memory) and self.enable_agentic_memory:
-                _tools.append(self.get_update_user_memory_function(user_id=user_id, async_mode=True))
+                _tools.append(self.get_update_user_memory_function(user_id=user_id, async_mode=False))
 
             if self.enable_agentic_context:
                 _tools.append(self.get_set_shared_context_function(session_id=session_id))
@@ -737,8 +736,10 @@ class Team:
 
         # Build a list of messages that should be added to the RunResponse
         messages_for_run_response = [m for m in run_messages.messages if m.add_to_agent_memory]
+
         # Update the TeamRunResponse messages
         run_response.messages = messages_for_run_response
+
         # Update the TeamRunResponse metrics
         run_response.metrics = self._aggregate_metrics_from_messages(messages_for_run_response)
 
@@ -774,9 +775,19 @@ class Team:
             # Add AgentRun to memory
             self.memory.add_team_run(team_run)  # type: ignore
             self.session_metrics = self._calculate_session_metrics(self.memory.messages)
-            self.full_team_session_metrics = self._calculate_full_team_session_metrics(self.memory.messages)
+            self.full_team_session_metrics = self._calculate_full_team_session_metrics(self.memory.messages, session_id)
         elif isinstance(self.memory, Memory):
-            self._make_memories_and_summaries(run_messages, run_response, session_id, user_id)
+            self.memory.add_run(session_id, run_response)
+
+            self._make_memories_and_summaries(run_messages, session_id, user_id)
+
+            session_messages: List[Message] = []
+            for run in self.memory.runs[session_id]:
+                for m in run.messages:
+                    session_messages.append(m)
+
+            # 10. Calculate session metrics
+            self.session_metrics = self._calculate_session_metrics(session_messages)
 
         # 6. Save session to storage
         self.write_to_storage(session_id=session_id, user_id=user_id)
@@ -1024,9 +1035,19 @@ class Team:
 
             # 5. Calculate session metrics
             self.session_metrics = self._calculate_session_metrics(self.memory.messages)
-            self.full_team_session_metrics = self._calculate_full_team_session_metrics(self.memory.messages)
+            self.full_team_session_metrics = self._calculate_full_team_session_metrics(self.memory.messages, session_id)
         elif isinstance(self.memory, Memory):
-            self._make_memories_and_summaries(run_messages, run_response, session_id, user_id)
+            self.memory.add_run(session_id, run_response)
+
+            self._make_memories_and_summaries(run_messages, session_id, user_id)
+
+            session_messages: List[Message] = []
+            for run in self.memory.runs[session_id]:
+                for m in run.messages:
+                    session_messages.append(m)
+
+            # 10. Calculate session metrics
+            self.session_metrics = self._calculate_session_metrics(session_messages)
 
 
         # 6. Save session to storage
@@ -1094,7 +1115,6 @@ class Team:
         **kwargs: Any,
     ) -> Union[TeamRunResponse, AsyncIterator[TeamRunResponse]]:
         """Run the Team asynchronously and return the response."""
-        self._initialize_team()
 
         retries = retries or 3
         if retries < 1:
@@ -1103,9 +1123,18 @@ class Team:
         # Use the default user_id and session_id when necessary
         if user_id is None:
             user_id = self.user_id
-        if session_id is None:
-            session_id = self.session_id
+
+        if session_id is None or session_id == "":
+            if not (self.session_id is None or self.session_id == ""):
+                session_id = self.session_id
+            else:
+                session_id = str(uuid4())
+
         session_id = cast(str, session_id)
+
+        log_debug(f"Session ID: {session_id}", center=True)
+
+        self._initialize_team(session_id=session_id)
 
         show_tool_calls = self.show_tool_calls
 
@@ -1126,7 +1155,7 @@ class Team:
         if self.context is not None:
             self._resolve_run_context()
 
-        if self.response_model is not None and self.parse_response:
+        if self.response_model is not None and self.parse_response and stream is True:
             # Disable stream if response_model is set
             stream = False
             log_warning("Disabling stream as response_model is set")
@@ -1412,10 +1441,20 @@ class Team:
 
             # 5. Calculate session metrics
             self.session_metrics = self._calculate_session_metrics(self.memory.messages)
-            self.full_team_session_metrics = self._calculate_full_team_session_metrics(self.memory.messages)
+            self.full_team_session_metrics = self._calculate_full_team_session_metrics(self.memory.messages, session_id)
 
         elif isinstance(self.memory, Memory):
-            await self._amake_memories_and_summaries(run_messages, run_response, session_id, user_id)
+            self.memory.add_run(session_id, run_response)
+
+            await self._amake_memories_and_summaries(run_messages, session_id, user_id)
+
+            session_messages: List[Message] = []
+            for run in self.memory.runs[session_id]:
+                for m in run.messages:
+                    session_messages.append(m)
+
+            # 10. Calculate session metrics
+            self.session_metrics = self._calculate_session_metrics(session_messages)
 
         # 6. Save session to storage
         self.write_to_storage(session_id=session_id, user_id=user_id)
@@ -1435,7 +1474,7 @@ class Team:
                 except Exception as e:
                     log_warning(f"Failed to convert response to output model: {e}")
             else:
-                log_warning("Something went wrong. Run response content is not a string")
+                log_warning("Something went wrong. Team run response content is not a string")
         elif self._member_response_model is not None:
             if isinstance(run_response.content, str):
                 try:
@@ -1451,7 +1490,7 @@ class Team:
                 except Exception as e:
                     log_warning(f"Failed to convert response to output model: {e}")
             else:
-                log_warning("Something went wrong. Run response content is not a string")
+                log_warning("Something went wrong. Member run response content is not a string")
 
         # 8. Log Team Run
         await self._alog_team_run(session_id=session_id, user_id=user_id)
@@ -1671,9 +1710,19 @@ class Team:
 
             # 5. Calculate session metrics
             self.session_metrics = self._calculate_session_metrics(self.memory.messages)
-            self.full_team_session_metrics = self._calculate_full_team_session_metrics(self.memory.messages)
+            self.full_team_session_metrics = self._calculate_full_team_session_metrics(self.memory.messages, session_id)
         elif isinstance(self.memory, Memory):
-            await self._amake_memories_and_summaries(run_messages, run_response, session_id, user_id)
+            self.memory.add_run(session_id, run_response)
+
+            await self._amake_memories_and_summaries(run_messages, session_id, user_id)
+
+            session_messages: List[Message] = []
+            for run in self.memory.runs[session_id]:
+                for m in run.messages:
+                    session_messages.append(m)
+
+            # 10. Calculate session metrics
+            self.session_metrics = self._calculate_session_metrics(session_messages)
 
         # 6. Save session to storage
         self.write_to_storage(session_id=session_id, user_id=user_id)
@@ -1690,41 +1739,23 @@ class Team:
 
         log_debug(f"Team Run End: {self.run_id}", center=True, symbol="*")
 
-    def _make_memories_and_summaries(self, run_messages: RunMessages, run_response: TeamRunResponse, session_id: str, user_id: Optional[str] = None) -> None:
-        session_messages: List[Message] = []
+    def _make_memories_and_summaries(self, run_messages: RunMessages, session_id: str, user_id: Optional[str] = None) -> None:
         if self.make_user_memories and run_messages.user_message is not None:
             self.memory.create_user_memory(message=run_messages.user_message.get_content_string(), user_id=user_id)
-
-        # Add AgentRun to memory
-        self.memory.add_run(session_id=session_id, run=self.run_response)
 
         # Update the session summary if needed
         if self.make_session_summaries:
             self.memory.create_session_summary(session_id=session_id, user_id=user_id)
 
-        self.memory.add_run(session_id, run_response)
 
-        # 10. Calculate session metrics
-        self.session_metrics = self._calculate_session_metrics(session_messages)
-        self.full_team_session_metrics = self._calculate_full_team_session_metrics(session_messages)
-
-    async def _amake_memories_and_summaries(self, run_messages: RunMessages, run_response: TeamRunResponse, session_id: str, user_id: Optional[str] = None) -> None:
-        session_messages: List[Message] = []
+    async def _amake_memories_and_summaries(self, run_messages: RunMessages, session_id: str, user_id: Optional[str] = None) -> None:
         if self.make_user_memories and run_messages.user_message is not None:
             await self.memory.acreate_user_memory(message=run_messages.user_message.get_content_string(), user_id=user_id)
-
-        # Add AgentRun to memory
-        self.memory.add_run(session_id=session_id, run=self.run_response)
 
         # Update the session summary if needed
         if self.make_session_summaries:
             await self.memory.acreate_session_summary(session_id=session_id, user_id=user_id)
 
-        self.memory.add_run(session_id, run_response)
-
-        # 10. Calculate session metrics
-        self.session_metrics = self._calculate_session_metrics(session_messages)
-        self.full_team_session_metrics = self._calculate_full_team_session_metrics(session_messages)
 
     ###########################################################################
     # Print Response
@@ -3351,7 +3382,7 @@ class Team:
 
         return session_metrics
 
-    def _calculate_full_team_session_metrics(self, messages: List[Message]) -> SessionMetrics:
+    def _calculate_full_team_session_metrics(self, messages: List[Message], session_id: str) -> SessionMetrics:
         current_session_metrics = self.session_metrics or self._calculate_session_metrics(messages)
         current_session_metrics = replace(current_session_metrics)
 
@@ -3361,9 +3392,10 @@ class Team:
         for member in self.members:
             # Only members that ran has memory
             if member.memory is not None:
-                for m in member.memory.messages:
-                    if m.role == assistant_message_role and m.metrics is not None:
-                        current_session_metrics += m.metrics
+                if isinstance(member.memory, AgentMemory):
+                    for m in member.memory.messages:
+                        if m.role == assistant_message_role and m.metrics is not None:
+                            current_session_metrics += m.metrics
         return current_session_metrics
 
     def _aggregate_metrics_from_messages(self, messages: List[Message]) -> Dict[str, Any]:
@@ -4114,7 +4146,6 @@ class Team:
                         "You can add new memories using the `update_memory` tool.\n"
                         "If you use the `update_memory` tool, remember to pass on the response to the user.\n\n"
                     )
-
             # Then add a summary of the interaction to the system prompt
             if isinstance(self.memory, Memory) and self.make_session_summaries:
                 if not user_id:
@@ -4165,7 +4196,6 @@ class Team:
         3. Add user message to run_messages
 
         """
-        self.memory = cast(TeamMemory, self.memory)
         # Initialize the RunMessages object
         run_messages = RunMessages()
 
@@ -4202,7 +4232,8 @@ class Team:
                 # Extend the messages with the history
                 run_messages.messages += history_copy
 
-        # 3.Add user message to run_messages
+
+        # 3. Add user message to run_messages
         user_message = self._get_user_message(message, audio=audio, images=images, videos=videos, files=files, **kwargs)
 
         # Add user message to run_messages
@@ -4486,22 +4517,23 @@ class Team:
     def get_set_shared_context_function(self, session_id: str) -> Callable:
         def set_shared_context(state: Union[str, dict]) -> str:
             """
-            Set the team's shared context with the given state.
+            Set or update the team's shared context with the given state.
 
             Args:
-                state (str): The state to set as the team context.
+                state (str or dict): The state to set as the team context.
             """
+            print("Setting shared context", state)
             if isinstance(self.memory, TeamMemory):
                 if isinstance(state, str):
-                    self.memory.set_shared_context_text(state)  # type: ignore
+                    self.memory.set_team_context_text(state)  # type: ignore
                 elif isinstance(state, dict):
-                    self.memory.set_shared_context_text(json.dumps(state))  # type: ignore
+                    self.memory.set_team_context_text(json.dumps(state))  # type: ignore
                 msg = f"Current team context: {self.memory.get_team_context_str()}"  # type: ignore
             else:
                 if isinstance(state, str):
-                    self.memory.set_shared_context_text(session_id=session_id, text=state)  # type: ignore
+                    self.memory.set_team_context_text(session_id=session_id, text=state)  # type: ignore
                 elif isinstance(state, dict):
-                    self.memory.set_shared_context_text(session_id=session_id, text=json.dumps(state))  # type: ignore
+                    self.memory.set_team_context_text(session_id=session_id, text=json.dumps(state))  # type: ignore
                 msg = f"Current team context: {self.memory.get_team_context_str(session_id=session_id)}"  # type: ignore
             log_debug(msg)  # type: ignore
             return msg
@@ -4811,7 +4843,7 @@ class Team:
                 return
 
             member_agent_index, member_agent = result
-            self._initialize_member(member_agent)
+            self._initialize_member(member_agent, session_id=session_id)
 
             # 2. Determine team context to send
             if isinstance(self.memory, TeamMemory):
@@ -4932,7 +4964,7 @@ class Team:
                 return
 
             member_agent_index, member_agent = result
-            self._initialize_member(member_agent)
+            self._initialize_member(member_agent, session_id=session_id)
 
             # 2. Determine team context to send
             if isinstance(self.memory, TeamMemory):
@@ -5103,7 +5135,7 @@ class Team:
                 return
 
             member_agent_index, member_agent = result
-            self._initialize_member(member_agent)
+            self._initialize_member(member_agent, session_id=session_id)
 
             # If the member will produce structured output, we need to parse the response
             if member_agent.response_model is not None:
@@ -5190,7 +5222,7 @@ class Team:
                 return
 
             member_agent_index, member_agent = result
-            self._initialize_member(member_agent)
+            self._initialize_member(member_agent, session_id=self.session_id)
 
             # If the member will produce structured output, we need to parse the response
             if member_agent.response_model is not None:
@@ -5405,7 +5437,7 @@ class Team:
         if self.memory is None:
             self.memory = session.memory  # type: ignore
 
-        if not (isinstance(self.memory, TeamMemory) or isinstance(self.memory, TeamMemory)):
+        if not (isinstance(self.memory, TeamMemory) or isinstance(self.memory, Memory)):
             # Is it a dict of `TeamMemory`?
             if isinstance(self.memory, dict) and "create_user_memories" in self.memory:
                 # Convert dict to TeamMemory
@@ -5440,10 +5472,15 @@ class Team:
             elif isinstance(self.memory, Memory):
                 if "runs" in session.memory:
                     try:
-                        self.memory.runs = {
-                            session_id: [RunResponse.from_dict(m) for m in runs]
-                            for session_id, runs in session.memory["runs"].items()
-                        }
+                        if self.memory.runs is None:
+                            self.memory.runs = {}
+                        for session_id, runs in session.memory["runs"].items():
+                            self.memory.runs[session_id] = []
+                            for m in runs:
+                                if "team_id" in m:
+                                    self.memory.runs[session_id].append(TeamRunResponse.from_dict(m))
+                                else:
+                                    self.memory.runs[session_id].append(RunResponse.from_dict(m))
                     except Exception as e:
                         log_warning(f"Failed to load runs from memory: {e}")
                 if 'team_context' in session.memory:

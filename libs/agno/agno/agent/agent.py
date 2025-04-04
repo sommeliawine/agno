@@ -37,6 +37,7 @@ from agno.models.response import ModelResponse, ModelResponseEvent
 from agno.reasoning.step import NextAction, ReasoningStep, ReasoningSteps
 from agno.run.messages import RunMessages
 from agno.run.response import RunEvent, RunResponse, RunResponseExtraData
+from agno.run.team import TeamRunResponse
 from agno.storage.base import Storage
 from agno.storage.session.agent import AgentSession
 from agno.tools.function import Function
@@ -473,11 +474,6 @@ class Agent:
         log_debug(f"Agent ID: {self.agent_id}", center=True)
         return self.agent_id
 
-    def set_session_id(self) -> str:
-        if self.session_id is None or self.session_id == "":
-            self.session_id = str(uuid4())
-        log_debug(f"Session ID: {self.session_id}", center=True)
-        return self.session_id
 
     def set_debug(self) -> None:
         if self.debug_mode or getenv("AGNO_DEBUG", "false").lower() == "true":
@@ -509,7 +505,9 @@ class Agent:
         self.set_storage_mode()
         self.set_debug()
         self.set_agent_id()
-        self.set_session_id()
+            
+        log_debug(f"Agent ID: {self.agent_id}", center=True)
+        
         if self.memory is None:
             # A new instance of Memory (v2) is created if no memory is provided
             self.memory = Memory()
@@ -876,6 +874,9 @@ class Agent:
             # 10. Calculate session metrics
             self.session_metrics = self.calculate_session_metrics(self.memory.messages)
         elif isinstance(self.memory, Memory):
+            # Add AgentRun to memory
+            self.memory.add_run(session_id=session_id, run=self.run_response)
+            
             self._make_memories_and_summaries(run_messages, session_id, user_id, messages)
 
         # Yield UpdatingMemory event
@@ -971,9 +972,10 @@ class Agent:
         **kwargs: Any,
     ) -> Union[RunResponse, Iterator[RunResponse]]:
         """Run the Agent and return the response."""
+
         # Initialize the Agent
         self.initialize_agent()
-
+        
         # If no retries are set, use the agent's default retries
         if retries is None:
             retries = self.retries
@@ -985,10 +987,18 @@ class Agent:
         # Use the default user_id and session_id when necessary
         if user_id is None:
             user_id = self.user_id
-        if session_id is None:
-            session_id = self.session_id
+        
+        if session_id is None or session_id == "":
+            if not (self.session_id is None or self.session_id == ""):
+                session_id = self.session_id
+            else:
+                session_id = str(uuid4())
 
         session_id = cast(str, session_id)
+
+        log_debug(f"Session ID: {session_id}", center=True)
+        
+        
 
         last_exception = None
         num_attempts = retries + 1
@@ -1036,6 +1046,8 @@ class Agent:
                         except Exception as e:
                             log_warning(f"Failed to convert response to output model: {e}")
                     else:
+                        print("HERE", type(run_response.content))
+                        print("HERE", run_response.content)
                         log_warning("Something went wrong. Run response content is not a string")
                     return run_response
                 else:
@@ -1447,6 +1459,9 @@ class Agent:
 
             self.session_metrics = self.calculate_session_metrics(self.memory.messages)
         elif isinstance(self.memory, Memory):
+            # Add AgentRun to memory
+            self.memory.add_run(session_id=session_id, run=self.run_response)
+            
             await self._amake_memories_and_summaries(run_messages, session_id, user_id, messages)
 
         # Yield UpdatingMemory event
@@ -1520,10 +1535,17 @@ class Agent:
         # Use the default user_id and session_id when necessary
         if user_id is None:
             user_id = self.user_id
-        if session_id is None:
-            session_id = self.session_id
+            
+        if session_id is None or session_id == "":
+            if not (self.session_id is None or self.session_id == ""):
+                session_id = self.session_id
+            else:
+                session_id = str(uuid4())
 
         session_id = cast(str, session_id)
+
+        log_debug(f"Session ID: {session_id}", center=True)
+        
 
         last_exception = None
         num_attempts = retries + 1
@@ -1700,8 +1722,6 @@ class Agent:
                 else:
                     log_warning("Unable to add messages to memory")
 
-        # Add AgentRun to memory
-        self.memory.add_run(session_id=session_id, run=self.run_response)
 
         # Update the session summary if needed
         if self.make_session_summaries:
@@ -1738,9 +1758,6 @@ class Agent:
                     await self.memory.acreate_user_memories(messages=parsed_messages, user_id=user_id)
                 else:
                     log_warning("Unable to add messages to memory")
-
-        # Add AgentRun to memory
-        self.memory.add_run(session_id=session_id, run=self.run_response)
 
         # Update the session summary if needed
         if self.make_session_summaries:
@@ -2134,10 +2151,15 @@ class Agent:
             elif isinstance(self.memory, Memory):
                 if "runs" in session.memory:
                     try:
-                        self.memory.runs = {
-                            session_id: [RunResponse.from_dict(m) for m in runs]
-                            for session_id, runs in session.memory["runs"].items()
-                        }
+                        if self.memory.runs is None:
+                            self.memory.runs = {}
+                        for session_id, runs in session.memory["runs"].items():
+                            self.memory.runs[session_id] = []
+                            for m in runs:
+                                if "team_id" in m:
+                                    self.memory.runs[session_id].append(TeamRunResponse.from_dict(m))
+                                else:
+                                    self.memory.runs[session_id].append(RunResponse.from_dict(m))
                     except Exception as e:
                         log_warning(f"Failed to load runs from memory: {e}")
                 if "memories" in session.memory:
@@ -2238,8 +2260,10 @@ class Agent:
             if self.agent_session is None:
                 log_debug("-*- Creating new AgentSession")
                 # Initialize the agent_id and session_id if they are not set
-                if self.agent_id is None or self.session_id is None:
+                if self.agent_id is None:
                     self.initialize_agent()
+                if self.session_id is None or self.session_id == "":
+                    self.session_id = str(uuid4())
                 if self.introduction is not None:
                     self.add_introduction(self.introduction)
                 # write_to_storage() will create a new AgentSession

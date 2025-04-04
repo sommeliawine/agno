@@ -38,6 +38,7 @@ class UserMemory:
     memory_id: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
+        
         _dict = {
             "memory_id": self.memory_id,
             "memory": self.memory,
@@ -48,6 +49,9 @@ class UserMemory:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "UserMemory":
+        last_updated = data.get("last_updated")
+        if last_updated:
+            data["last_updated"] = datetime.fromisoformat(last_updated)
         return cls(**data)
 
 
@@ -69,6 +73,9 @@ class SessionSummary:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SessionSummary":
+        last_updated = data.get("last_updated")
+        if last_updated:
+            data["last_updated"] = datetime.fromisoformat(last_updated)
         return cls(**data)
 
 @dataclass
@@ -271,7 +278,7 @@ class Memory:
         self,
         memory: UserMemory,
         user_id: Optional[str] = None,
-    ) -> str:
+    ) -> Optional[str]:
         """Add a user memory for a given user id
         Args:
             memory (UserMemory): The memory to add
@@ -286,7 +293,7 @@ class Memory:
             memory.memory_id = memory_id
         if user_id is None:
             user_id = "default"
-
+        
         if not memory.last_updated:
             memory.last_updated = datetime.now()
 
@@ -323,11 +330,9 @@ class Memory:
         if not memory.last_updated:
             memory.last_updated = datetime.now()
 
-        if user_id not in self.memories:  # type: ignore
-            raise ValueError(f"User {user_id} not found")
-
         if memory_id not in self.memories[user_id]:  # type: ignore
-            raise ValueError(f"Memory {memory_id} not found for user {user_id}")
+            log_warning(f"Memory {memory_id} not found for user {user_id}")
+            return None
 
         self.memories.setdefault(user_id, {})[memory_id] = memory  # type: ignore
         if self.memory_db:
@@ -450,6 +455,8 @@ class Memory:
                     memory_id=update.id, memory=update.memory, topics=update.topics, last_updated=datetime.now()
                 )
                 memory_id = self.replace_user_memory(memory_id=update.id, memory=user_memory, user_id=user_id)
+                if memory_id is None:
+                    continue
                 response_memories[memory_id] = user_memory
             # We don't have an existing memory id, so we need to add a new memory
             else:
@@ -461,6 +468,8 @@ class Memory:
                 )
 
                 memory_id = self.add_user_memory(memory=user_memory, user_id=user_id)
+                if memory_id is None:
+                    continue
                 response_memories[memory_id] = user_memory
 
         if not response_memories:
@@ -626,13 +635,13 @@ class Memory:
             return []
 
         session_runs = self.runs.get(session_id, [])
-        runs_to_process = session_runs if last_n is None else session_runs[-last_n:]
+        runs_to_process = session_runs[-last_n:] if last_n is not None else session_runs
         messages_from_history = []
 
         for run_response in runs_to_process:
             if not (run_response and run_response.messages):
                 continue
-
+            
             for message in run_response.messages:
                 # Skip messages with specified role
                 if skip_role and message.role == skip_role:
@@ -919,12 +928,16 @@ class Memory:
             self.team_context[session_id] = TeamContext(text=text)
 
     def get_team_context_str(self, session_id: str) -> str:
+        if self.team_context is None:
+            return ""
         session_team_context = self.team_context.get(session_id, None)
         if session_team_context and session_team_context.text:
             return f"<team context>\n{session_team_context.text}\n</team context>\n"
         return ""
 
     def get_team_member_interactions_str(self, session_id: str) -> str:
+        if self.team_context is None:
+            return ""
         team_member_interactions_str = ""
         session_team_context = self.team_context.get(session_id, None)
         if session_team_context and session_team_context.member_interactions:
@@ -939,6 +952,8 @@ class Memory:
         return team_member_interactions_str
 
     def get_team_context_images(self, session_id: str) -> List[ImageArtifact]:
+        if self.team_context is None:
+            return []
         images = []
         session_team_context = self.team_context.get(session_id, None)
         if session_team_context and session_team_context.member_interactions:
@@ -948,6 +963,8 @@ class Memory:
         return images
 
     def get_team_context_videos(self, session_id: str) -> List[VideoArtifact]:
+        if self.team_context is None:
+            return []
         videos = []
         session_team_context = self.team_context.get(session_id, None)
         if session_team_context and session_team_context.member_interactions:
@@ -957,6 +974,8 @@ class Memory:
         return videos
 
     def get_team_context_audio(self, session_id: str) -> List[AudioArtifact]:
+        if self.team_context is None:
+            return []
         audio = []
         session_team_context = self.team_context.get(session_id, None)
         if session_team_context and session_team_context.member_interactions:
