@@ -51,7 +51,7 @@ team = Team(
     # Set enable_team_history=true to add the previous chat history to the messages sent to the Model.
     enable_team_history=True,
     # Only need to set this on the team and not on team members, otherwise it will be done multiple times on each agent
-    make_user_memories=True,  
+    create_user_memories=True,
     markdown=True,
     show_members_responses=True,
 )

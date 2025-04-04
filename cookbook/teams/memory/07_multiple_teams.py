@@ -49,7 +49,7 @@ chat_team = Team(
         "You can search the web for information."
     ],
     memory=memory,
-    make_user_memories=True,
+    create_user_memories=True,
     show_tool_calls=True,
     markdown=True,
     show_members_responses=True,
@@ -84,7 +84,7 @@ multi_language_team = Team(
         "Always check the language of the user's input before routing to an agent.",
         "For unsupported languages like Italian, respond in English with the above message.",
     ],
-    make_user_memories=True,
+    create_user_memories=True,
     show_members_responses=True,
 )
 

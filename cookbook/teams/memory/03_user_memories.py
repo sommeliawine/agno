@@ -69,7 +69,7 @@ team = Team(
     enable_team_history=True,
     num_of_interactions_from_history=5,
     # Create and store personalized memories for this user
-    make_user_memories=True,
+    create_user_memories=True,
     show_tool_calls=True,
     markdown=True,
     show_members_responses=True,

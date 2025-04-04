@@ -164,10 +164,10 @@ class Team:
     memory: Optional[Union[TeamMemory, Memory]] = None
     # Enable the agent to manage memories of the user
     enable_agentic_memory: bool = False
-    # If True, make the agent create user memories at the end of runs
-    make_user_memories: bool = False
-    # If True, make the agent create/update session summaries at the end of runs
-    make_session_summaries: bool = False
+    # If True, the agent creates user memories at the end of runs
+    create_user_memories: bool = False
+    # If True, the agent creates/updates session summaries at the end of runs
+    create_session_summaries: bool = False
 
     # --- Agent History ---
     # If True, enable the team history
@@ -229,8 +229,8 @@ class Team:
         parse_response: bool = True,
         memory: Optional[Union[TeamMemory, Memory]] = None,
         enable_agentic_memory: bool = False,
-        make_user_memories: bool = False,
-        make_session_summaries: bool = False,
+        create_user_memories: bool = False,
+        create_session_summaries: bool = False,
         enable_team_history: bool = False,
         num_of_interactions_from_history: int = 3,
         storage: Optional[Storage] = None,
@@ -286,8 +286,8 @@ class Team:
         self.memory = memory
 
         self.enable_agentic_memory = enable_agentic_memory
-        self.make_user_memories = make_user_memories
-        self.make_session_summaries = make_session_summaries
+        self.create_user_memories = create_user_memories
+        self.create_session_summaries = create_session_summaries
 
         self.enable_team_history = enable_team_history
         self.num_of_interactions_from_history = num_of_interactions_from_history
@@ -1740,20 +1740,20 @@ class Team:
         log_debug(f"Team Run End: {self.run_id}", center=True, symbol="*")
 
     def _make_memories_and_summaries(self, run_messages: RunMessages, session_id: str, user_id: Optional[str] = None) -> None:
-        if self.make_user_memories and run_messages.user_message is not None:
+        if self.create_user_memories and run_messages.user_message is not None:
             self.memory.create_user_memory(message=run_messages.user_message.get_content_string(), user_id=user_id)
 
         # Update the session summary if needed
-        if self.make_session_summaries:
+        if self.create_session_summaries:
             self.memory.create_session_summary(session_id=session_id, user_id=user_id)
 
 
     async def _amake_memories_and_summaries(self, run_messages: RunMessages, session_id: str, user_id: Optional[str] = None) -> None:
-        if self.make_user_memories and run_messages.user_message is not None:
+        if self.create_user_memories and run_messages.user_message is not None:
             await self.memory.acreate_user_memory(message=run_messages.user_message.get_content_string(), user_id=user_id)
 
         # Update the session summary if needed
-        if self.make_session_summaries:
+        if self.create_session_summaries:
             await self.memory.acreate_session_summary(session_id=session_id, user_id=user_id)
 
 
@@ -4148,7 +4148,7 @@ class Team:
 
         # Then add memories to the system prompt
         if self.memory:
-            if isinstance(self.memory, Memory) and (self.make_user_memories or self.enable_agentic_memory):
+            if isinstance(self.memory, Memory) and (self.create_user_memories or self.enable_agentic_memory):
                 if not user_id:
                     user_id = "default"
                 user_memories = self.memory.memories.get(user_id, {})  # type: ignore
@@ -4177,7 +4177,7 @@ class Team:
                         "If you use the `update_memory` tool, remember to pass on the response to the user.\n\n"
                     )
             # Then add a summary of the interaction to the system prompt
-            if isinstance(self.memory, Memory) and self.make_session_summaries:
+            if isinstance(self.memory, Memory) and self.create_session_summaries:
                 if not user_id:
                     user_id = "default"
                 session_summary: SessionSummary = self.memory.summaries.get(user_id, {}).get(session_id, None)  # type: ignore
@@ -5498,52 +5498,52 @@ class Team:
                             log_warning(f"Failed to load user memories: {e}")
                 except Exception as e:
                     log_warning(f"Failed to load TeamMemory: {e}")
-            elif isinstance(self.memory, Memory):
-                if "runs" in session.memory:
-                    try:
-                        if self.memory.runs is None:
-                            self.memory.runs = {}
-                        for session_id, runs in session.memory["runs"].items():
-                            self.memory.runs[session_id] = []
-                            for m in runs:
-                                if "team_id" in m:
-                                    self.memory.runs[session_id].append(TeamRunResponse.from_dict(m))
-                                else:
-                                    self.memory.runs[session_id].append(RunResponse.from_dict(m))
-                    except Exception as e:
-                        log_warning(f"Failed to load runs from memory: {e}")
-                if 'team_context' in session.memory:
-                    try:
-                        self.memory.team_context = {
-                            session_id: TeamContext.from_dict(team_context) for session_id, team_context in session.memory["team_context"].items()
-                        }
-                    except Exception as e:
-                        log_warning(f"Failed to load team context: {e}")
-                if "memories" in session.memory:
-                    from agno.memory_v2.memory import UserMemory as UserMemoryV2
-
-                    try:
-                        self.memory.memories = {
-                            user_id: {
-                                memory_id: UserMemoryV2.from_dict(memory) for memory_id, memory in user_memories.items()
-                            }
-                            for user_id, user_memories in session.memory["memories"].items()
-                        }
-                    except Exception as e:
-                        log_warning(f"Failed to load user memories: {e}")
-                if "summaries" in session.memory:
-                    from agno.memory_v2.memory import SessionSummary as SessionSummaryV2
-
-                    try:
-                        self.memory.summaries = {
-                            user_id: {
-                                session_id: SessionSummaryV2.from_dict(summary)
-                                for session_id, summary in user_session_summaries.items()
-                            }
-                            for user_id, user_session_summaries in session.memory["summaries"].items()
-                        }
-                    except Exception as e:
-                        log_warning(f"Failed to load session summaries: {e}")
+            # elif isinstance(self.memory, Memory):
+            #     if "runs" in session.memory:
+            #         try:
+            #             if self.memory.runs is None:
+            #                 self.memory.runs = {}
+            #             for session_id, runs in session.memory["runs"].items():
+            #                 self.memory.runs[session_id] = []
+            #                 for m in runs:
+            #                     if "team_id" in m:
+            #                         self.memory.runs[session_id].append(TeamRunResponse.from_dict(m))
+            #                     else:
+            #                         self.memory.runs[session_id].append(RunResponse.from_dict(m))
+            #         except Exception as e:
+            #             log_warning(f"Failed to load runs from memory: {e}")
+            #     if 'team_context' in session.memory:
+            #         try:
+            #             self.memory.team_context = {
+            #                 session_id: TeamContext.from_dict(team_context) for session_id, team_context in session.memory["team_context"].items()
+            #             }
+            #         except Exception as e:
+            #             log_warning(f"Failed to load team context: {e}")
+            #     if "memories" in session.memory:
+            #         from agno.memory_v2.memory import UserMemory as UserMemoryV2
+            #
+            #         try:
+            #             self.memory.memories = {
+            #                 user_id: {
+            #                     memory_id: UserMemoryV2.from_dict(memory) for memory_id, memory in user_memories.items()
+            #                 }
+            #                 for user_id, user_memories in session.memory["memories"].items()
+            #             }
+            #         except Exception as e:
+            #             log_warning(f"Failed to load user memories: {e}")
+            #     if "summaries" in session.memory:
+            #         from agno.memory_v2.memory import SessionSummary as SessionSummaryV2
+            #
+            #         try:
+            #             self.memory.summaries = {
+            #                 user_id: {
+            #                     session_id: SessionSummaryV2.from_dict(summary)
+            #                     for session_id, summary in user_session_summaries.items()
+            #                 }
+            #                 for user_id, user_session_summaries in session.memory["summaries"].items()
+            #             }
+            #         except Exception as e:
+            #             log_warning(f"Failed to load session summaries: {e}")
         log_debug(f"-*- TeamSession loaded: {session.session_id}")
 
     ###########################################################################
@@ -5609,18 +5609,25 @@ class Team:
     def _get_team_session(self, session_id: str, user_id: Optional[str] = None) -> TeamSession:
         from time import time
 
-        """Get an TeamSession object, which can be saved to the database"""
-        if isinstance(self.memory, TeamMemory):
-            self.memory = cast(TeamMemory, self.memory)
+        """Get an TeamMemory object, which can be saved to the database"""
+        if self.memory is not None:
+            if isinstance(self.memory, TeamMemory):
+                self.memory = cast(TeamMemory, self.memory)
+                memory_dict = self.memory.to_dict()
+            else:
+                self.memory = cast(Memory, self.memory)
+                # We fake the structure on storage, to maintain the interface with the legacy implementation
+                run_responses = self.memory.runs[session_id]
+                memory_dict = {"runs": [rr.to_dict() for rr in run_responses]}
         else:
-            self.memory = cast(Memory, self.memory)
+            memory_dict = None
 
         return TeamSession(
             session_id=session_id,
             team_id=self.team_id,
             user_id=user_id,
             team_session_id=self.team_session_id,
-            memory=self.memory.to_dict() if self.memory is not None else None,
+            memory=memory_dict,
             team_data=self._get_team_data(),
             session_data=self._get_session_data(),
             extra_data=self.extra_data,
@@ -5689,96 +5696,3 @@ class Team:
             )
         except Exception as e:
             log_debug(f"Could not create team monitor: {e}")
-
-    def deep_copy(self, *, update: Optional[Dict[str, Any]] = None) -> "Team":
-        """Create a deep copy of the Team with optional updates.
-        Args:
-            update: Optional dictionary of attributes to update in the copy
-        Returns:
-            A new Team instance with copied attributes
-        """
-        # Get all instance attributes
-        attributes = self.__dict__.copy()
-
-        excluded_fields = ["team_session", "session_name", "_functions_for_model"]
-        # Deep copy each field
-        copied_attributes = {}
-        for field_name, field_value in attributes.items():
-            if field_name in excluded_fields:
-                continue
-            copied_attributes[field_name] = self._deep_copy_field(field_name, field_value)
-
-        # Create new instance
-        team_copy = Team.__new__(Team)
-        team_copy.__dict__ = copied_attributes
-
-        # Apply any updates
-        if update:
-            for key, value in update.items():
-                setattr(team_copy, key, value)
-
-        return team_copy
-
-    def _deep_copy_field(self, field_name: str, field_value: Any) -> Any:
-        """Deep copy a single field value.
-        Args:
-            field_name: Name of the field being copied
-            field_value: Value to copy
-        Returns:
-            Deep copied value
-        """
-        from copy import copy, deepcopy
-
-        # Handle special cases
-        if field_name == "members":
-            # Deep copy each member
-            if field_value is not None:
-                return [member.deep_copy() for member in field_value]
-            return None
-
-        # For memory use the deep_copy methods
-        if field_name in ("memory", "reasoning_agent") and field_value is not None:
-            return field_value.deep_copy()
-
-        # For storage, model and reasoning_model, use a deep copy
-        elif field_name in ("storage", "model", "reasoning_model") and field_value is not None:
-            try:
-                return deepcopy(field_value)
-            except Exception:
-                try:
-                    return copy(field_value)
-                except Exception as e:
-                    log_warning(f"Failed to copy field: {field_name} - {e}")
-                    return field_value
-
-        # For compound types, attempt a deep copy
-        elif isinstance(field_value, (list, dict, set)):
-            try:
-                return deepcopy(field_value)
-            except Exception as e:
-                log_warning(f"Failed to deepcopy field: {field_name} - {e}")
-                try:
-                    return copy(field_value)
-                except Exception as e:
-                    log_warning(f"Failed to copy field: {field_name} - {e}")
-                    return field_value
-
-        # For pydantic models, attempt a model_copy
-        elif isinstance(field_value, BaseModel):
-            try:
-                return field_value.model_copy(deep=True)
-            except Exception:
-                try:
-                    return field_value.model_copy(deep=False)
-                except Exception as e:
-                    log_warning(f"Failed to copy field: {field_name} - {e}")
-                    return field_value
-
-        # For other types, attempt a shallow copy first
-        try:
-            from copy import copy
-
-            return copy(field_value)
-        except Exception:
-            # If copy fails, return as is
-            return field_value

@@ -28,7 +28,7 @@ agent = Agent(
         table_name="agent_sessions", db_file="tmp/persistent_memory.db"
     ),
     add_history_to_messages=True,
-    make_user_memories=True,
+    create_user_memories=True,
     debug_mode=True,
 )
 

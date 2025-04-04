@@ -24,7 +24,7 @@ chat_agent = Agent(
     model=Gemini(id="gemini-2.0-flash-exp"),
     description="You are a helpful assistant that can chat with users",
     memory=memory,
-    make_user_memories=True,
+    create_user_memories=True,
 )
 
 chat_agent.print_response(
@@ -39,7 +39,7 @@ research_agent = Agent(
     description="You are a research assistant that can help users with their research questions",
     tools=[DuckDuckGoTools(cache_results=True)],
     memory=memory,
-    make_user_memories=True,
+    create_user_memories=True,
 )
 
 research_agent.print_response(

@@ -40,7 +40,7 @@ team = Team(
     ],
     memory=memory,
     # Enable the team to make session summaries
-    make_session_summaries=True,
+    create_session_summaries=True,
     show_tool_calls=True,
     markdown=True,
     show_members_responses=True,
@@ -70,10 +70,10 @@ if __name__ == "__main__":
         )
     )
 
-    
+
     session_summary = memory.get_session_summary(user_id=user_id, session_id=session_id_1)
     print("Session Summary: ", session_summary.summary)
-    
+
     session_id_2 = "session_2"
 
     asyncio.run(
@@ -88,4 +88,3 @@ if __name__ == "__main__":
 
     session_summary = memory.get_session_summary(user_id=user_id, session_id=session_id_2)
     print("Session Summary: ", session_summary.summary)
-    

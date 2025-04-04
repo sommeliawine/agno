@@ -25,8 +25,8 @@ john_doe_id = "john_doe@example.com"
 agent = Agent(
     model=Gemini(id="gemini-2.0-flash-exp"),
     memory=memory,
-    make_user_memories=True,
-    make_session_summaries=True,
+    create_user_memories=True,
+    create_session_summaries=True,
 )
 
 agent.print_response(

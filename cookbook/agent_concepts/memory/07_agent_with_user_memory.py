@@ -16,7 +16,7 @@ john_doe_id = "john_doe@example.com"
 agent = Agent(
     model=Gemini(id="gemini-2.0-flash-exp"),
     memory=memory,
-    make_user_memories=True,
+    create_user_memories=True,
     debug_mode=True,
 )
 

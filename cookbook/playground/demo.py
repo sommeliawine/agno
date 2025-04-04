@@ -35,8 +35,9 @@ simple_agent = Agent(
         table_name="simple_agent", db_file=agent_storage_file, auto_upgrade_schema=True
     ),
     memory=memory,
+    create_user_memories=True,
     add_history_to_messages=True,
-    num_history_responses=3,
+    num_history_responses=5,
     add_datetime_to_instructions=True,
     markdown=True,
 )
@@ -55,6 +56,7 @@ web_agent = Agent(
         table_name="web_agent", db_file=agent_storage_file, auto_upgrade_schema=True
     ),
     memory=memory,
+    create_user_memories=True,
     add_history_to_messages=True,
     num_history_responses=5,
     add_datetime_to_instructions=True,
@@ -79,6 +81,7 @@ finance_agent = Agent(
         table_name="finance_agent", db_file=agent_storage_file, auto_upgrade_schema=True
     ),
     memory=memory,
+    create_user_memories=True,
     add_history_to_messages=True,
     num_history_responses=5,
     add_datetime_to_instructions=True,
@@ -97,6 +100,7 @@ image_agent = Agent(
     ],
     memory=memory,
     markdown=True,
+    create_user_memories=True,
     add_history_to_messages=True,
     add_datetime_to_instructions=True,
     storage=SqliteStorage(
@@ -148,6 +152,7 @@ research_agent = Agent(
     - [Reference 2](link)
     """),
     memory=memory,
+    create_user_memories=True,
     storage=SqliteStorage(
         table_name="research_agent",
         db_file=agent_storage_file,
@@ -171,6 +176,7 @@ youtube_agent = Agent(
         "Keep your answers concise and engaging.",
     ],
     memory=memory,
+    create_user_memories=True,
     add_history_to_messages=True,
     num_history_responses=5,
     show_tool_calls=True,
