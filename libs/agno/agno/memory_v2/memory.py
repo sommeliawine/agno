@@ -1,10 +1,11 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from os import getenv
-from typing import Any, Dict, List, Literal, Optional, cast
+from typing import Any, Dict, List, Literal, Optional, Union, cast
 
 from pydantic import BaseModel, Field
 
+from agno.media import AudioArtifact, ImageArtifact, VideoArtifact
 from agno.memory_v2.db.memory.base import MemoryDb
 from agno.memory_v2.db.schema import MemoryRow, SummaryRow
 from agno.memory_v2.db.summary.base import SummaryDb
@@ -13,6 +14,7 @@ from agno.memory_v2.summarizer import SessionSummarizer
 from agno.models.base import Model
 from agno.models.message import Message
 from agno.run.response import RunResponse
+from agno.run.team import TeamRunResponse
 from agno.utils.log import log_debug, log_warning, logger, set_log_level_to_debug, set_log_level_to_info
 from agno.utils.prompts import get_json_output_prompt
 from agno.utils.string import parse_response_model_str
@@ -69,6 +71,33 @@ class SessionSummary:
     def from_dict(cls, data: Dict[str, Any]) -> "SessionSummary":
         return cls(**data)
 
+@dataclass
+class TeamMemberInteraction:
+    member_name: str
+    task: str
+    response: RunResponse
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "TeamMemberInteraction":
+        return cls(
+            member_name=data["member_name"],
+            task=data["task"],
+            response=RunResponse.from_dict(data["response"])
+        )
+
+@dataclass
+class TeamContext:
+    # List of team member interaction, represented as a request and a response
+    member_interactions: List[TeamMemberInteraction] = field(default_factory=list)
+    text: Optional[str] = None
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "TeamContext":
+        return cls(
+            member_interactions=[TeamMemberInteraction.from_dict(interaction) for interaction in data["member_interactions"]],
+            text=data["text"]
+        )
+
 
 @dataclass
 class Memory:
@@ -91,7 +120,10 @@ class Memory:
     summary_db: Optional[SummaryDb] = None
 
     # runs per session
-    runs: Optional[Dict[str, List[RunResponse]]] = None
+    runs: Optional[Dict[str, List[Union[RunResponse, TeamRunResponse]]]] = None
+
+    # Team context per session
+    team_context: Optional[Dict[str, TeamContext]] = None
 
     monitoring: bool = False
     debug_mode: bool = False
@@ -436,9 +468,9 @@ class Memory:
 
         return response_memories
 
-    async def acreate_user_memory(self, message: Message, user_id: Optional[str] = None) -> Dict[str, UserMemory]:
+    async def acreate_user_memory(self, message: str, user_id: Optional[str] = None) -> Dict[str, UserMemory]:
         """Creates a memory from a message and adds it to the memory db."""
-        return await self.acreate_user_memories(messages=[message], user_id=user_id)
+        return await self.acreate_user_memories(messages=[Message(role="user", content=message)], user_id=user_id)
 
     async def acreate_user_memories(
         self, messages: List[Message], user_id: Optional[str] = None
@@ -567,7 +599,7 @@ class Memory:
                     final_messages.append(assistant_message_from_run)
         return final_messages
 
-    def add_run(self, session_id: str, run: RunResponse) -> None:
+    def add_run(self, session_id: str, run: Union[RunResponse, TeamRunResponse]) -> None:
         """Adds a RunResponse to the runs list."""
         if not self.runs:
             self.runs = {}
@@ -858,3 +890,77 @@ class Memory:
         copied_obj.summary_manager = self.summary_manager
 
         return copied_obj
+
+    # -*- Team Functions
+    def add_interaction_to_team_context(self, session_id: str, member_name: str, task: str, run_response: RunResponse) -> None:
+
+        if self.team_context is None:
+            self.team_context = {}
+        if not session_id in self.team_context:
+            self.team_context[session_id] = TeamContext()
+        self.team_context[session_id].member_interactions.append(
+            TeamMemberInteraction(
+                member_name=member_name,
+                task=task,
+                response=run_response,
+            )
+        )
+        log_debug(f"Updated team context with member name: {member_name}")
+
+    def set_team_context_text(self, session_id: str, text: str) -> None:
+        if self.team_context is None:
+            self.team_context = {}
+        if not session_id in self.team_context:
+            self.team_context[session_id] = TeamContext()
+
+        if self.team_context:
+            self.team_context[session_id].text = text
+        else:
+            self.team_context[session_id] = TeamContext(text=text)
+
+    def get_team_context_str(self, session_id: str) -> str:
+        session_team_context = self.team_context.get(session_id, None)
+        if session_team_context and session_team_context.text:
+            return f"<team context>\n{session_team_context.text}\n</team context>\n"
+        return ""
+
+    def get_team_member_interactions_str(self, session_id: str) -> str:
+        team_member_interactions_str = ""
+        session_team_context = self.team_context.get(session_id, None)
+        if session_team_context and session_team_context.member_interactions:
+            team_member_interactions_str += "<member interactions>\n"
+
+            for interaction in self.team_context.member_interactions:
+                team_member_interactions_str += f"Member: {interaction.member_name}\n"
+                team_member_interactions_str += f"Task: {interaction.task}\n"
+                team_member_interactions_str += f"Response: {interaction.response.to_dict().get('content', '')}\n"
+                team_member_interactions_str += "\n"
+            team_member_interactions_str += "</member interactions>\n"
+        return team_member_interactions_str
+
+    def get_team_context_images(self, session_id: str) -> List[ImageArtifact]:
+        images = []
+        session_team_context = self.team_context.get(session_id, None)
+        if session_team_context and session_team_context.member_interactions:
+            for interaction in session_team_context.member_interactions:
+                if interaction.response.images:
+                    images.extend(interaction.response.images)
+        return images
+
+    def get_team_context_videos(self, session_id: str) -> List[VideoArtifact]:
+        videos = []
+        session_team_context = self.team_context.get(session_id, None)
+        if session_team_context and session_team_context.member_interactions:
+            for interaction in session_team_context.member_interactions:
+                if interaction.response.videos:
+                    videos.extend(interaction.response.videos)
+        return videos
+
+    def get_team_context_audio(self, session_id: str) -> List[AudioArtifact]:
+        audio = []
+        session_team_context = self.team_context.get(session_id, None)
+        if session_team_context and session_team_context.member_interactions:
+            for interaction in session_team_context.member_interactions:
+                if interaction.response.audio:
+                    audio.extend(interaction.response.audio)
+        return audio

@@ -876,43 +876,7 @@ class Agent:
             # 10. Calculate session metrics
             self.session_metrics = self.calculate_session_metrics(self.memory.messages)
         elif isinstance(self.memory, Memory):
-            session_messages: List[Message] = []
-            if self.make_user_memories and run_messages.user_message is not None:
-                self.memory.create_user_memory(message=run_messages.user_message.get_content_string(), user_id=user_id)
-
-                # TODO: Possibly do both of these in one step
-                if messages is not None and len(messages) > 0:
-                    parsed_messages = []
-                    for _im in messages:
-                        # Parse the message and convert to a Message object if possible
-                        if isinstance(_im, Message):
-                            parsed_messages.append(_im)
-                        elif isinstance(_im, dict):
-                            try:
-                                parsed_messages.append(Message(**_im))
-                            except Exception as e:
-                                log_warning(f"Failed to validate message: {e}")
-                        else:
-                            log_warning(f"Unsupported message type: {type(_im)}")
-                            continue
-
-                    if len(parsed_messages) > 0:
-                        if session_messages is None:
-                            session_messages = []
-                        session_messages.extend(parsed_messages)
-                        self.memory.create_user_memories(messages=parsed_messages, user_id=user_id)
-                    else:
-                        log_warning("Unable to add messages to memory")
-
-            # Add AgentRun to memory
-            self.memory.add_run(session_id=session_id, run=self.run_response)
-
-            # Update the session summary if needed
-            if self.make_session_summaries:
-                self.memory.create_session_summary(session_id=session_id, user_id=user_id)
-
-            # 10. Calculate session metrics
-            self.session_metrics = self.calculate_session_metrics(session_messages)
+            self._make_memories_and_summaries(run_messages, session_id, user_id, messages)
 
         # Yield UpdatingMemory event
         if self.stream_intermediate_steps:
@@ -1483,45 +1447,7 @@ class Agent:
 
             self.session_metrics = self.calculate_session_metrics(self.memory.messages)
         elif isinstance(self.memory, Memory):
-            # TODO: This in a thread
-
-            session_messages: List[Message] = []
-            if self.make_user_memories and run_messages.user_message is not None:
-                await self.memory.acreate_user_memory(message=run_messages.user_message, user_id=user_id)
-
-                # TODO: Possibly do both of these in one step
-                if messages is not None and len(messages) > 0:
-                    parsed_messages = []
-                    for _im in messages:
-                        # Parse the message and convert to a Message object if possible
-                        if isinstance(_im, Message):
-                            parsed_messages.append(_im)
-                        elif isinstance(_im, dict):
-                            try:
-                                parsed_messages.append(Message(**_im))
-                            except Exception as e:
-                                log_warning(f"Failed to validate message: {e}")
-                        else:
-                            log_warning(f"Unsupported message type: {type(_im)}")
-                            continue
-
-                    if len(parsed_messages) > 0:
-                        if session_messages is None:
-                            session_messages = []
-                        session_messages.extend(parsed_messages)
-                        await self.memory.acreate_user_memories(messages=parsed_messages, user_id=user_id)
-                    else:
-                        log_warning("Unable to add messages to memory")
-
-            # Add AgentRun to memory
-            self.memory.add_run(session_id=session_id, run=self.run_response)
-
-            # Update the session summary if needed
-            if self.make_session_summaries:
-                await self.memory.acreate_session_summary(session_id=session_id, user_id=user_id)
-
-            # 10. Calculate session metrics
-            self.session_metrics = self.calculate_session_metrics(session_messages)
+            await self._amake_memories_and_summaries(run_messages, session_id, user_id, messages)
 
         # Yield UpdatingMemory event
         if self.stream_intermediate_steps:
@@ -1745,6 +1671,84 @@ class Agent:
             rr.created_at = created_at
         return rr
 
+    def _make_memories_and_summaries(self, run_messages: RunMessages, session_id: str, user_id: Optional[str] = None, messages: Optional[List[Message]] = None) -> None:
+        session_messages: List[Message] = []
+        if self.make_user_memories and run_messages.user_message is not None:
+            self.memory.create_user_memory(message=run_messages.user_message.get_content_string(), user_id=user_id)
+
+            # TODO: Possibly do both of these in one step
+            if messages is not None and len(messages) > 0:
+                parsed_messages = []
+                for _im in messages:
+                    # Parse the message and convert to a Message object if possible
+                    if isinstance(_im, Message):
+                        parsed_messages.append(_im)
+                    elif isinstance(_im, dict):
+                        try:
+                            parsed_messages.append(Message(**_im))
+                        except Exception as e:
+                            log_warning(f"Failed to validate message: {e}")
+                    else:
+                        log_warning(f"Unsupported message type: {type(_im)}")
+                        continue
+
+                if len(parsed_messages) > 0:
+                    if session_messages is None:
+                        session_messages = []
+                    session_messages.extend(parsed_messages)
+                    self.memory.create_user_memories(messages=parsed_messages, user_id=user_id)
+                else:
+                    log_warning("Unable to add messages to memory")
+
+        # Add AgentRun to memory
+        self.memory.add_run(session_id=session_id, run=self.run_response)
+
+        # Update the session summary if needed
+        if self.make_session_summaries:
+            self.memory.create_session_summary(session_id=session_id, user_id=user_id)
+
+        # Calculate session metrics
+        self.session_metrics = self.calculate_session_metrics(session_messages)
+
+    async def _amake_memories_and_summaries(self, run_messages: RunMessages, session_id: str, user_id: Optional[str] = None, messages: Optional[List[Message]] = None) -> None:
+        session_messages: List[Message] = []
+        if self.make_user_memories and run_messages.user_message is not None:
+            await self.memory.acreate_user_memory(message=run_messages.user_message.get_content_string(), user_id=user_id)
+
+            # TODO: Possibly do both of these in one step
+            if messages is not None and len(messages) > 0:
+                parsed_messages = []
+                for _im in messages:
+                    # Parse the message and convert to a Message object if possible
+                    if isinstance(_im, Message):
+                        parsed_messages.append(_im)
+                    elif isinstance(_im, dict):
+                        try:
+                            parsed_messages.append(Message(**_im))
+                        except Exception as e:
+                            log_warning(f"Failed to validate message: {e}")
+                    else:
+                        log_warning(f"Unsupported message type: {type(_im)}")
+                        continue
+
+                if len(parsed_messages) > 0:
+                    if session_messages is None:
+                        session_messages = []
+                    session_messages.extend(parsed_messages)
+                    await self.memory.acreate_user_memories(messages=parsed_messages, user_id=user_id)
+                else:
+                    log_warning("Unable to add messages to memory")
+
+        # Add AgentRun to memory
+        self.memory.add_run(session_id=session_id, run=self.run_response)
+
+        # Update the session summary if needed
+        if self.make_session_summaries:
+            await self.memory.acreate_session_summary(session_id=session_id, user_id=user_id)
+
+        # Calculate session metrics
+        self.session_metrics = self.calculate_session_metrics(session_messages)
+
     def get_tools(
         self, async_mode: bool = False, user_id: Optional[str] = None, session_id: Optional[str] = None
     ) -> Optional[List[Union[Toolkit, Callable, Function, Dict]]]:
@@ -1956,9 +1960,6 @@ class Agent:
                 log_debug(f"Memories loaded for user: {user_id}")
             else:
                 log_debug("Memories loaded")
-        else:
-            # No loading needed for Memory
-            pass
 
     def get_agent_data(self) -> Dict[str, Any]:
         agent_data: Dict[str, Any] = {}
@@ -2231,7 +2232,7 @@ class Agent:
         if self.storage is not None:
             # Load existing session if session_id is provided
             log_debug(f"Reading AgentSession: {self.session_id}")
-            self.read_from_storage(user_id=self.user_id, session_id=self.session_id)
+            self.read_from_storage( session_id=self.session_id, user_id=self.user_id)  # type: ignore
 
             # Create a new session if it does not exist
             if self.agent_session is None:
@@ -2485,8 +2486,7 @@ class Agent:
                         "You should ALWAYS prefer information from this conversation over the past summary.\n\n"
                     )
             elif isinstance(self.memory, Memory) and self.make_session_summaries:
-                user_id = self.user_id
-                if not self.user_id:
+                if not user_id:
                     user_id = "default"
                 session_summary: SessionSummary = self.memory.summaries.get(user_id, {}).get(session_id, None)  # type: ignore
                 if session_summary is not None:
@@ -3749,7 +3749,7 @@ class Agent:
                 str: A string indicating the status of the update.
             """
             self.memory = cast(Memory, self.memory)
-            await self.memory.acreate_user_memory(message=Message(role="user", content=message), user_id=user_id)
+            await self.memory.acreate_user_memory(message=message, user_id=user_id)
             return "Memory updated successfully"
 
         if async_mode:
@@ -4063,6 +4063,8 @@ class Agent:
         self,
         message: Optional[Union[List, Dict, str, Message]] = None,
         *,
+        session_id: Optional[str] = None,
+        user_id: Optional[str] = None,
         messages: Optional[List[Union[Dict, Message]]] = None,
         audio: Optional[Sequence[Audio]] = None,
         images: Optional[Sequence[Image]] = None,
@@ -4125,6 +4127,8 @@ class Agent:
                 for resp in self.run(
                     message=message,
                     messages=messages,
+                    session_id=session_id,
+                    user_id=user_id,
                     audio=audio,
                     images=images,
                     videos=videos,
@@ -4278,6 +4282,8 @@ class Agent:
                 run_response = self.run(
                     message=message,
                     messages=messages,
+                    session_id=session_id,
+                    user_id=user_id,
                     audio=audio,
                     images=images,
                     videos=videos,
@@ -4405,6 +4411,8 @@ class Agent:
         message: Optional[Union[List, Dict, str, Message]] = None,
         *,
         messages: Optional[List[Union[Dict, Message]]] = None,
+        session_id: Optional[str] = None,
+        user_id: Optional[str] = None,
         audio: Optional[Sequence[Audio]] = None,
         images: Optional[Sequence[Image]] = None,
         videos: Optional[Sequence[Video]] = None,
@@ -4466,6 +4474,8 @@ class Agent:
                 async for resp in await self.arun(
                     message=message,
                     messages=messages,
+                    session_id=session_id,
+                    user_id=user_id,
                     audio=audio,
                     images=images,
                     videos=videos,
@@ -4619,6 +4629,8 @@ class Agent:
                 run_response = await self.arun(
                     message=message,
                     messages=messages,
+                    session_id=session_id,
+                    user_id=user_id,
                     audio=audio,
                     images=images,
                     videos=videos,

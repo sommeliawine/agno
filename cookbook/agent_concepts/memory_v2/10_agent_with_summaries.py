@@ -40,8 +40,9 @@ memories = memory.get_user_memories(user_id=john_doe_id)
 print("John Doe's memories:")
 for i, m in enumerate(memories):
     print(f"{i}: {m.memory}")
+session_summary = memory.get_session_summary(user_id=john_doe_id, session_id=session_id_1)
 print(
-    f"Session summary: {memory.get_session_summary(user_id=john_doe_id, session_id=session_id_1).summary}\n"
+    f"Session summary: {session_summary.summary}\n"
 )
 
 
