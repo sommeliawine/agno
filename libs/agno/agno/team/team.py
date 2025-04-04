@@ -1767,6 +1767,8 @@ class Team:
         *,
         stream: bool = False,
         stream_intermediate_steps: bool = False,
+        session_id: Optional[str] = None,
+        user_id: Optional[str] = None,
         show_message: bool = True,
         show_reasoning: bool = True,
         show_reasoning_verbose: bool = False,
@@ -1798,6 +1800,8 @@ class Team:
                 show_reasoning=show_reasoning,
                 show_reasoning_verbose=show_reasoning_verbose,
                 tags_to_include_in_markdown=tags_to_include_in_markdown,
+                session_id=session_id,
+                user_id=user_id,
                 audio=audio,
                 images=images,
                 videos=videos,
@@ -1814,6 +1818,8 @@ class Team:
                 show_reasoning=show_reasoning,
                 show_reasoning_verbose=show_reasoning_verbose,
                 tags_to_include_in_markdown=tags_to_include_in_markdown,
+                session_id=session_id,
+                user_id=user_id,
                 audio=audio,
                 images=images,
                 videos=videos,
@@ -1830,6 +1836,8 @@ class Team:
         show_reasoning: bool = True,
         show_reasoning_verbose: bool = False,
         tags_to_include_in_markdown: Optional[Set[str]] = None,
+        session_id: Optional[str] = None,
+        user_id: Optional[str] = None,
         audio: Optional[Sequence[Audio]] = None,
         images: Optional[Sequence[Image]] = None,
         videos: Optional[Sequence[Video]] = None,
@@ -1879,6 +1887,8 @@ class Team:
                 videos=videos,
                 files=files,
                 stream=False,
+                session_id=session_id,
+                user_id=user_id,
                 **kwargs,
             )
             response_timer.stop()
@@ -2089,6 +2099,8 @@ class Team:
         show_reasoning: bool = True,
         show_reasoning_verbose: bool = False,
         tags_to_include_in_markdown: Optional[Set[str]] = None,
+        session_id: Optional[str] = None,
+        user_id: Optional[str] = None,
         audio: Optional[Sequence[Audio]] = None,
         images: Optional[Sequence[Image]] = None,
         videos: Optional[Sequence[Video]] = None,
@@ -2155,6 +2167,8 @@ class Team:
                 files=files,
                 stream=True,
                 stream_intermediate_steps=stream_intermediate_steps,
+                session_id=session_id,
+                user_id=user_id,
                 **kwargs,
             )
 
@@ -2561,6 +2575,8 @@ class Team:
         *,
         stream: bool = False,
         stream_intermediate_steps: bool = False,
+        session_id: Optional[str] = None,
+        user_id: Optional[str] = None,
         show_message: bool = True,
         show_reasoning: bool = True,
         show_reasoning_verbose: bool = False,
@@ -2592,6 +2608,8 @@ class Team:
                 show_reasoning=show_reasoning,
                 show_reasoning_verbose=show_reasoning_verbose,
                 tags_to_include_in_markdown=tags_to_include_in_markdown,
+                session_id=session_id,
+                user_id=user_id,
                 audio=audio,
                 images=images,
                 videos=videos,
@@ -2608,6 +2626,8 @@ class Team:
                 show_reasoning=show_reasoning,
                 show_reasoning_verbose=show_reasoning_verbose,
                 tags_to_include_in_markdown=tags_to_include_in_markdown,
+                session_id=session_id,
+                user_id=user_id,
                 audio=audio,
                 images=images,
                 videos=videos,
@@ -2624,6 +2644,8 @@ class Team:
         show_reasoning: bool = True,
         show_reasoning_verbose: bool = False,
         tags_to_include_in_markdown: Optional[Set[str]] = None,
+        session_id: Optional[str] = None,
+        user_id: Optional[str] = None,
         audio: Optional[Sequence[Audio]] = None,
         images: Optional[Sequence[Image]] = None,
         videos: Optional[Sequence[Video]] = None,
@@ -2673,6 +2695,8 @@ class Team:
                 videos=videos,
                 files=files,
                 stream=False,
+                session_id=session_id,
+                user_id=user_id,
                 **kwargs,
             )
             response_timer.stop()
@@ -2881,6 +2905,8 @@ class Team:
         show_reasoning: bool = True,
         show_reasoning_verbose: bool = False,
         tags_to_include_in_markdown: Optional[Set[str]] = None,
+        session_id: Optional[str] = None,
+        user_id: Optional[str] = None,
         audio: Optional[Sequence[Audio]] = None,
         images: Optional[Sequence[Image]] = None,
         videos: Optional[Sequence[Video]] = None,
@@ -2950,6 +2976,8 @@ class Team:
                 files=files,
                 stream=True,
                 stream_intermediate_steps=stream_intermediate_steps,
+                session_id=session_id,
+                user_id=user_id,
                 **kwargs,
             )
             team_markdown = None
@@ -4522,7 +4550,6 @@ class Team:
             Args:
                 state (str or dict): The state to set as the team context.
             """
-            print("Setting shared context", state)
             if isinstance(self.memory, TeamMemory):
                 if isinstance(state, str):
                     self.memory.set_team_context_text(state)  # type: ignore
