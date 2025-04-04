@@ -176,7 +176,7 @@ app = Playground(
         youtube_agent,
         research_agent,
         image_agent,
-    ]
+    ],
 ).get_app()
 
 if __name__ == "__main__":

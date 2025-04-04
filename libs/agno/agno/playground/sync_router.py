@@ -74,6 +74,34 @@ def chat_response_streamer(
         yield error_response.to_json()
         return
 
+def team_chat_response_streamer(
+    team: Team,
+    message: str,
+    images: Optional[List[Image]] = None,
+    audio: Optional[List[Audio]] = None,
+    videos: Optional[List[Video]] = None,
+    files: Optional[List[FileMedia]] = None,
+) -> Generator:
+    try:
+        run_response = team.run(
+            message,
+            images=images,
+            audio=audio,
+            videos=videos,
+            files=files,
+            stream=True,
+            stream_intermediate_steps=True,
+        )
+        for run_response_chunk in run_response:
+            run_response_chunk = cast(TeamRunResponse, run_response_chunk)
+            yield run_response_chunk.to_json()
+    except Exception as e:
+        error_response = TeamRunResponse(
+            content=str(e),
+            event=RunEvent.run_error,
+        )
+        yield error_response.to_json()
+        return
 
 def get_sync_playground_router(
     agents: Optional[List[Agent]] = None, workflows: Optional[List[Workflow]] = None, teams: Optional[List[Team]] = None
@@ -380,7 +408,7 @@ def get_sync_playground_router(
         return JSONResponse(status_code=404, content="Session not found.")
 
     @playground_router.get("/agents/{agent_id}/memories")
-    async def get_all_agent_memories(agent_id: str, user_id: Optional[str] = Query(None, min_length=1)):
+    async def get_agent_memories(agent_id: str, user_id: Optional[str] = Query(None, min_length=1)):
         agent = get_agent_by_id(agent_id, agents)
         if agent is None:
             return JSONResponse(status_code=404, content="Agent not found.")
@@ -540,34 +568,6 @@ def get_sync_playground_router(
 
         return TeamGetResponse.from_team(team)
 
-    def team_chat_response_streamer(
-        team: Team,
-        message: str,
-        images: Optional[List[Image]] = None,
-        audio: Optional[List[Audio]] = None,
-        videos: Optional[List[Video]] = None,
-        files: Optional[List[FileMedia]] = None,
-    ) -> Generator:
-        try:
-            run_response = team.run(
-                message,
-                images=images,
-                audio=audio,
-                videos=videos,
-                files=files,
-                stream=True,
-                stream_intermediate_steps=True,
-            )
-            for run_response_chunk in run_response:
-                run_response_chunk = cast(TeamRunResponse, run_response_chunk)
-                yield run_response_chunk.to_json()
-        except Exception as e:
-            error_response = TeamRunResponse(
-                content=str(e),
-                event=RunEvent.run_error,
-            )
-            yield error_response.to_json()
-            return
 
     @playground_router.post("/teams/{team_id}/runs")
     def create_team_run(
@@ -740,5 +740,20 @@ def get_sync_playground_router(
 
         team.delete_session(session_id)
         return JSONResponse(content={"message": f"successfully deleted team {team.name}"})
+
+    @playground_router.get("/team/{team_id}/memories")
+    async def get_team_memories(team_id: str, user_id: Optional[str] = Query(None, min_length=1)):
+        team = get_team_by_id(team_id, teams)
+        if team is None:
+            return JSONResponse(status_code=404, content="Teem not found.")
+
+        if team.memory is None:
+            return JSONResponse(status_code=404, content="Team does not have memory enabled.")
+
+        if isinstance(team.memory, Memory):
+            memories = team.memory.get_user_memories(user_id=user_id)
+            return [MemoryResponse(memory=memory.memory, topics=memory.topics, last_updated=memory.last_updated) for memory in memories]
+        else:
+            return []
 
     return playground_router

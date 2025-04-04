@@ -409,7 +409,7 @@ def get_async_playground_router(
         return JSONResponse(status_code=404, content="Session not found.")
 
     @playground_router.get("/agents/{agent_id}/memories")
-    async def get_all_agent_memories(agent_id: str, user_id: Optional[str] = Query(None, min_length=1)):
+    async def get_agent_memories(agent_id: str, user_id: Optional[str] = Query(None, min_length=1)):
         agent = get_agent_by_id(agent_id, agents)
         if agent is None:
             return JSONResponse(status_code=404, content="Agent not found.")
@@ -758,5 +758,20 @@ def get_async_playground_router(
                 return JSONResponse(content={"message": f"successfully deleted team session {session_id}"})
 
         raise HTTPException(status_code=404, detail="Session not found")
+
+    @playground_router.get("/team/{team_id}/memories")
+    async def get_team_memories(team_id: str, user_id: Optional[str] = Query(None, min_length=1)):
+        team = get_team_by_id(team_id, teams)
+        if team is None:
+            return JSONResponse(status_code=404, content="Teem not found.")
+
+        if team.memory is None:
+            return JSONResponse(status_code=404, content="Team does not have memory enabled.")
+
+        if isinstance(team.memory, Memory):
+            memories = team.memory.get_user_memories(user_id=user_id)
+            return [MemoryResponse(memory=memory.memory, topics=memory.topics, last_updated=memory.last_updated) for memory in memories]
+        else:
+            return []
 
     return playground_router
