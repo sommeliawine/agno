@@ -14,7 +14,7 @@ try:
 except ImportError:
     raise ImportError("`hashlib` not installed. Please install using `pip install hashlib`")
 try:
-    from pymongo import MongoClient, errors, AsyncMongoClient
+    from pymongo import AsyncMongoClient, MongoClient, errors
     from pymongo.collection import Collection
     from pymongo.operations import SearchIndexModel
 
@@ -89,11 +89,11 @@ class MongoDb(VectorDb):
 
         self._client = client
         self._db = None
-        self._collection = None
+        self._collection: Optional[Collection] = None
 
         self._async_client: Optional[AsyncMongoClient] = None
         self._async_db = None
-        self._async_collection = None
+        self._async_collection: Optional[Collection] = None
 
     def _get_client(self) -> MongoClient:
         """Create or retrieve the MongoDB client."""
@@ -104,7 +104,7 @@ class MongoDb(VectorDb):
                 # Trigger a connection to verify the client
                 self._client.admin.command("ping")
                 log_info("Connected to MongoDB successfully.")
-                self._db = self._client[self.database]
+                self._db = self._client[self.database]  # type: ignore
             except errors.ConnectionFailure as e:
                 logger.error(f"Failed to connect to MongoDB: {e}")
                 raise ConnectionError(f"Failed to connect to MongoDB: {e}")
@@ -136,11 +136,11 @@ class MongoDb(VectorDb):
     def _get_or_create_collection(self) -> Collection:
         """Get or create the MongoDB collection, handling Atlas Search index creation."""
 
-        self._collection = self._db[self.collection_name]
+        self._collection = self._db[self.collection_name]  # type: ignore
 
         if not self.collection_exists():
             log_info(f"Creating collection '{self.collection_name}'.")
-            self._db.create_collection(self.collection_name)
+            self._db.create_collection(self.collection_name)  # type: ignore
             self._create_search_index()
         else:
             log_info(f"Using existing collection '{self.collection_name}'.")
@@ -151,22 +151,22 @@ class MongoDb(VectorDb):
                 self._create_search_index()
                 if self.wait_until_index_ready:
                     self._wait_for_index_ready()
-        return self._collection
+        return self._collection  # type: ignore
 
     def _get_collection(self) -> Collection:
         """Get or create the MongoDB collection."""
         if self._collection is None:
             if self._client is None:
                 self._get_client()
-            self._collection = self._db[self.collection_name]
+            self._collection = self._db[self.collection_name]  # type: ignore
         return self._collection
 
     async def _get_async_collection(self):
         """Get or create the async MongoDB collection."""
         if self._async_collection is None:
             client = await self.async_client
-            self._async_db = client[self.database]
-            self._async_collection = self._async_db[self.collection_name]
+            self._async_db = client[self.database]  # type: ignore
+            self._async_collection = self._async_db[self.collection_name]  # type: ignore
         return self._async_collection
 
     def _create_search_index(self, overwrite: bool = True) -> None:
@@ -180,7 +180,8 @@ class MongoDb(VectorDb):
                 if overwrite and self._search_index_exists():
                     log_info(f"Dropping existing search index '{index_name}'.")
                     try:
-                        self._collection.drop_search_index(index_name)
+                        collection = self._get_collection()
+                        collection.drop_search_index(index_name)
                         # Wait longer after index deletion
                         time.sleep(retry_delay * 2)
                     except errors.OperationFailure as e:
@@ -217,7 +218,8 @@ class MongoDb(VectorDb):
                     type="vectorSearch",
                 )
 
-                self._collection.create_search_index(model=search_index_model)
+                collection = self._get_collection()
+                collection.create_search_index(model=search_index_model)
 
                 if self.wait_until_index_ready:
                     self._wait_for_index_ready()
@@ -289,7 +291,6 @@ class MongoDb(VectorDb):
 
     def _wait_for_index_ready(self) -> None:
         """Wait until the Atlas Search index is ready."""
-        start_time = time.time()
         index_name = "vector_index_1"
         while True:
             try:
@@ -298,7 +299,6 @@ class MongoDb(VectorDb):
                     break
             except Exception as e:
                 logger.error(f"Error checking index status: {e}")
-            if time.time() - start_time > self.wait_until_index_ready:  # type: ignore
                 raise TimeoutError("Timeout waiting for search index to become ready.")
             time.sleep(1)
 
@@ -316,18 +316,18 @@ class MongoDb(VectorDb):
             except Exception as e:
                 logger.error(f"Error checking index status asynchronously: {e}")
                 import traceback
+
                 logger.error(f"Traceback: {traceback.format_exc()}")
 
-            if time.time() - start_time > self.wait_until_index_ready:
-                raise TimeoutError(
-                    "Timeout waiting for search index to become ready.")
+            if time.time() - start_time > self.wait_until_index_ready:  # type: ignore
+                raise TimeoutError("Timeout waiting for search index to become ready.")
             await asyncio.sleep(1)
 
     def collection_exists(self) -> bool:
         """Check if the collection exists in the database."""
         if self._db is None:
             self._get_client()
-        return self.collection_name in self._db.list_collection_names()
+        return self.collection_name in self._db.list_collection_names()  # type: ignore
 
     def create(self) -> None:
         """Create the MongoDB collection and indexes if they do not exist."""
@@ -339,7 +339,7 @@ class MongoDb(VectorDb):
 
         if not await self.async_exists():
             log_info(f"Creating collection '{self.collection_name}' asynchronously.")
-            await self._async_db.create_collection(self.collection_name)
+            await self._async_db.create_collection(self.collection_name)  # type: ignore
             await self._create_search_index_async()
             if self.wait_until_index_ready:
                 await self._wait_for_index_ready_async()
@@ -457,7 +457,7 @@ class MongoDb(VectorDb):
 
             pipeline.append({"$project": {"embedding": 0}})
 
-            results = list(collection.aggregate(pipeline))
+            results = list(collection.aggregate(pipeline))  # type: ignore
 
             docs = [
                 Document(
@@ -542,7 +542,8 @@ class MongoDb(VectorDb):
         """Delete all documents from the collection."""
         if self.exists():
             try:
-                result = self._collection.delete_many({})
+                collection = self._get_collection()
+                result = collection.delete_many({})
                 success = result.deleted_count >= 0  # Consider any deletion (even 0) as success
                 log_info(f"Deleted {result.deleted_count} documents from collection.")
                 return success
@@ -679,8 +680,7 @@ class MongoDb(VectorDb):
                     id=str(doc["_id"]),
                     name=doc.get("name"),
                     content=doc["content"],
-                    meta_data={**doc.get("meta_data", {}),
-                            "score": doc.get("score", 0.0)},
+                    meta_data={**doc.get("meta_data", {}), "score": doc.get("score", 0.0)},
                 )
                 for doc in results
             ]
@@ -692,6 +692,7 @@ class MongoDb(VectorDb):
             logger.error(f"Error during async search: {e}")
             # Include traceback for better debugging
             import traceback
+
             logger.error(f"Traceback: {traceback.format_exc()}")
             raise
 
