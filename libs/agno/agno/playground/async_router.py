@@ -2,7 +2,7 @@ import json
 from dataclasses import asdict
 from io import BytesIO
 from typing import AsyncGenerator, List, Optional, cast
-
+from uuid import uuid4
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 
@@ -109,6 +109,20 @@ def get_async_playground_router(
 
     if agents is None and workflows is None and teams is None:
         raise ValueError("Either agents, teams or workflows must be provided.")
+
+    # Generate IDs if they were not explicitly set on agents/teams/workflows
+    if agents:
+        for agent in agents:
+            if agent.agent_id is None:
+                agent.agent_id = str(uuid4())
+    if teams:
+        for team in teams:
+            if team.team_id is None:
+                team.team_id = str(uuid4())
+    if workflows:
+        for workflow in workflows:
+            if workflow.workflow_id is None:
+                workflow.workflow_id = str(uuid4())
 
     @playground_router.get("/status")
     async def playground_status():
