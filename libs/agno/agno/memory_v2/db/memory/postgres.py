@@ -16,7 +16,7 @@ from agno.memory_v2.db.schema import MemoryRow
 from agno.utils.log import log_debug, logger
 
 
-class PgMemoryDb(MemoryDb):
+class PostgresMemoryDb(MemoryDb):
     def __init__(
         self,
         table_name: str,
@@ -52,6 +52,9 @@ class PgMemoryDb(MemoryDb):
         self.metadata: MetaData = MetaData(schema=self.schema)
         self.Session: scoped_session = scoped_session(sessionmaker(bind=self.db_engine))
         self.table: Table = self.get_table()
+
+    def __str__(self) -> str:
+        return f"PostgresMemoryDb(table_name={self.table_name}, schema={self.schema})"
 
     def get_table(self) -> Table:
         return Table(
@@ -177,7 +180,7 @@ class PgMemoryDb(MemoryDb):
             memo (dict): A dictionary of objects already copied during the current copying pass.
 
         Returns:
-            PgMemoryDb: A deep-copied instance of PgMemoryDb.
+            PostgresMemoryDb: A deep-copied instance of PgMemoryDb.
         """
         from copy import deepcopy
 

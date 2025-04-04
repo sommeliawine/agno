@@ -74,6 +74,9 @@ class SqliteSummaryDb(SummaryDb):
         self.Session = scoped_session(sessionmaker(bind=self.db_engine))
         # Database table for memories
         self.table: Table = self.get_table()
+        
+    def __str__(self) -> str:
+        return f"SqliteSummaryDb(table_name={self.table_name}, db_file={self.db_file})"
 
     def get_table(self) -> Table:
         return Table(

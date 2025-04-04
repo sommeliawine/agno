@@ -16,7 +16,7 @@ from agno.memory_v2.db.summary import SummaryDb
 from agno.utils.log import log_debug, logger
 
 
-class PgSummaryDb(SummaryDb):
+class PostgresSummaryDb(SummaryDb):
     def __init__(
         self,
         table_name: str,
@@ -52,6 +52,9 @@ class PgSummaryDb(SummaryDb):
         self.metadata: MetaData = MetaData(schema=self.schema)
         self.Session: scoped_session = scoped_session(sessionmaker(bind=self.db_engine))
         self.table: Table = self.get_table()
+
+    def __str__(self) -> str:
+        return f"PostgresSummaryDb(table_name={self.table_name}, schema={self.schema})"
 
     def get_table(self) -> Table:
         return Table(
@@ -177,7 +180,7 @@ class PgSummaryDb(SummaryDb):
             memo (dict): A dictionary of objects already copied during the current copying pass.
 
         Returns:
-            PgSummaryDb: A deep-copied instance of PgSummaryDb.
+            PostgresSummaryDb: A deep-copied instance of PgSummaryDb.
         """
         from copy import deepcopy
 

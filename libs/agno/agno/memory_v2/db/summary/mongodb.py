@@ -42,6 +42,9 @@ class MongoSummaryDb(SummaryDb):
         self.db_name: str = db_name
         self.db: Database = self._client[self.db_name]
         self.collection: Collection = self.db[self.collection_name]
+        
+    def __str__(self) -> str:
+        return f"MongoSummaryDb(collection_name={self.collection_name}, db_name={self.db_name})"
 
     def create(self) -> None:
         """Create indexes for the collection"""
