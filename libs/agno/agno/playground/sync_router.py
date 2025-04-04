@@ -113,7 +113,7 @@ def get_sync_playground_router(
             else:
                 provider = ""
 
-            
+
             if agent.memory:
                 if isinstance(agent.memory, AgentMemory) and agent.memory.db:
                     memory_dict = {"name": agent.memory.db.__class__.__name__}
@@ -129,7 +129,7 @@ def get_sync_playground_router(
                         memory_dict["memory_db"] = str(agent.memory.memory_db)
                     if agent.memory.summary_db is not None:
                         memory_dict["summary_db"] = str(agent.memory.summary_db)
-                        
+
                 else:
                     memory_dict = None
             else:
@@ -380,20 +380,20 @@ def get_sync_playground_router(
         return JSONResponse(status_code=404, content="Session not found.")
 
     @playground_router.get("/agents/{agent_id}/memories")
-    async def get_all_agent_memories(agent_id: str, user_id: Optional[str] = Query(None, min_length=1)) -> List[MemoryResponse]:
+    async def get_all_agent_memories(agent_id: str, user_id: Optional[str] = Query(None, min_length=1)):
         agent = get_agent_by_id(agent_id, agents)
         if agent is None:
             return JSONResponse(status_code=404, content="Agent not found.")
-        
+
         if agent.memory is None:
             return JSONResponse(status_code=404, content="Agent does not have memory enabled.")
-        
+
         if isinstance(agent.memory, Memory):
             memories = agent.memory.get_user_memories(user_id=user_id)
             return [MemoryResponse(memory=memory.memory, topics=memory.topics, last_updated=memory.last_updated) for memory in memories]
         else:
             return []
-        
+
     @playground_router.get("/workflows", response_model=List[WorkflowsGetResponse])
     def get_workflows():
         if workflows is None:
