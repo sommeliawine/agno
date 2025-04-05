@@ -1611,6 +1611,8 @@ class Agent:
                 self._tools_for_model = []
                 self._functions_for_model = {}
 
+                add_thinking_tools = False
+
                 for tool in agent_tools:
                     if isinstance(tool, Dict):
                         # If a dict is passed, it is a builtin tool
@@ -1647,6 +1649,15 @@ class Agent:
                             self._tools_for_model.append({"type": "function", "function": tool.to_dict()})
                             log_debug(f"Included function {tool.name}")
 
+                            if tool.add_instructions and tool.instructions is not None:
+                                if self._tool_instructions is None:
+                                    self._tool_instructions = []
+                                self._tool_instructions.append(tool.instructions)
+
+                            # Check if thinking is enabled for this function
+                            if hasattr(tool, "think") and tool.think:
+                                add_thinking_tools = True
+
                     elif callable(tool):
                         try:
                             function_name = tool.__name__
@@ -1660,6 +1671,27 @@ class Agent:
                                 log_debug(f"Included function {func.name}")
                         except Exception as e:
                             log_warning(f"Could not add function {tool}: {e}")
+
+                # Add ThinkingTools if needed by any function
+                if add_thinking_tools:
+                    from agno.tools.thinking import ThinkingTools
+
+                    thinking_tools = ThinkingTools(add_instructions=True)
+                    for name, func in thinking_tools.functions.items():
+                        if name not in self._functions_for_model:
+                            func._agent = self
+                            func.process_entrypoint(strict=strict)
+                            if strict:
+                                func.strict = True
+                            self._functions_for_model[name] = func
+                            self._tools_for_model.append({"type": "function", "function": func.to_dict()})
+                            log_debug(f"Included thinking function {name}")
+
+                    # Add instructions from ThinkingTools
+                    if thinking_tools.add_instructions and thinking_tools.instructions is not None:
+                        if self._tool_instructions is None:
+                            self._tool_instructions = []
+                        self._tool_instructions.append(thinking_tools.instructions)
 
                 # Set tools on the model
                 model.set_tools(tools=self._tools_for_model)
