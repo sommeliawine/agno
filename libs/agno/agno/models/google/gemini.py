@@ -107,7 +107,7 @@ def _convert_schema(schema_dict) -> Optional[Schema]:
     schema_type = schema_dict.get("type", "")
     if schema_type is None or schema_type == "null":
         return None
-    description = schema_dict.get("description", "")
+    description = schema_dict.get("description", None)
     default = schema_dict.get("default", None)
 
     if schema_type == "object" and "properties" in schema_dict:
@@ -119,14 +119,14 @@ def _convert_schema(schema_dict) -> Optional[Schema]:
             if isinstance(prop_type, list) and 'null' in prop_type:
                 prop_def["type"] = prop_type[0]
                 is_nullable = True
-            
+
             # Process property schema
             converted_schema = _convert_schema(prop_def)
             if converted_schema is not None:
                 if is_nullable:
                     converted_schema.nullable = True
                 properties[key] = converted_schema
-                
+
         required = schema_dict.get("required", [])
 
         if properties:
@@ -138,7 +138,7 @@ def _convert_schema(schema_dict) -> Optional[Schema]:
                 default=default,
             )
         else:
-            return None
+            return Schema(type=Type.OBJECT, description=description, default=default)
 
     elif schema_type == "array" and "items" in schema_dict:
         items = _convert_schema(schema_dict["items"])
@@ -152,18 +152,18 @@ def _convert_schema(schema_dict) -> Optional[Schema]:
 
         is_nullable = False
         filtered_any_of = []
-        
+
         for schema in any_of:
             if schema is None:
                 is_nullable = True
             else:
                 filtered_any_of.append(schema)
-        
+
         any_of = filtered_any_of
         if len(any_of) == 1:
             any_of[0].nullable = is_nullable
             return any_of[0]
-        else:    
+        else:
             return Schema(
                 any_of=any_of,
                 description=description,
@@ -191,9 +191,6 @@ def _format_function_definitions(tools_list):
                 description=description,
                 parameters=parameters_schema,
             )
-            print()
-            print(function_decl)
-            print()
 
             function_declarations.append(function_decl)
     if function_declarations:

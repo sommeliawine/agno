@@ -217,7 +217,7 @@ def test_tool_call_custom_tools():
         else:
             return f"It is currently 70 degrees and cloudy in {city}"
     
-    def generate_weather_string(degrees: Union[int, float], city: str = "New York", condition: str | None = None):
+    def generate_weather_string(degrees: Union[int, float], city: str = "New York", condition: str | None = None) -> str:
             """
             Generate a weather string for any city
 
@@ -233,7 +233,7 @@ def test_tool_call_custom_tools():
         name: str
         country: str
 
-    def get_the_weather_city_type(city: City, metadata: dict):
+    def get_the_weather_city_type(city: City, metadata: dict) -> str:
             """
             Get the weather in any city
 
@@ -260,7 +260,6 @@ def test_tool_call_custom_tools():
     assert any(msg.tool_calls for msg in response.messages)
     assert response.content is not None
     assert "70" in response.content
-    assert False
 
 
 def test_tool_call_list_parameters():

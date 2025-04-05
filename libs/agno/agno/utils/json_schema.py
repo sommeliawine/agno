@@ -75,6 +75,7 @@ def get_json_schema_for_arg(t: Any) -> Optional[Dict[str, Any]]:
 def get_json_schema(
     type_hints: Dict[str, Any], param_descriptions: Optional[Dict[str, str]] = None, strict: bool = False
 ) -> Dict[str, Any]:
+    print("HERE", type_hints, param_descriptions, strict)
     json_schema: Dict[str, Any] = {
         "type": "object",
         "properties": {},
