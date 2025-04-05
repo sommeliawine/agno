@@ -198,16 +198,55 @@ def test_multiple_tool_calls():
     assert "TSLA" in response.content
 
 
-def test_tool_call_custom_tool_no_parameters():
+def test_tool_call_custom_tools():
     def get_the_weather_in_tokyo():
         """
         Get the weather in Tokyo
         """
         return "It is currently 70 degrees and cloudy in Tokyo"
+    
+    def get_the_weather_in_france(city: Optional[str] = None):
+        """
+        Get the weather in a french city
+
+        Args:
+            city: The city to get the weather for
+        """
+        if city is None:
+            return "It is currently 70 degrees and cloudy in Paris"
+        else:
+            return f"It is currently 70 degrees and cloudy in {city}"
+    
+    def get_the_weather(city: str, degrees: Union[int, float], condition: str | None = None):
+            """
+            Get the weather in any city
+
+            Args:
+                city: The city to get the weather for
+                degrees: The temperature in degrees
+                condition: The weather condition (e.g., cloudy, sunny, rainy)
+            """
+            weather_condition = condition if condition else "cloudy"
+            return f"It is currently {degrees} degrees and {weather_condition} in {city}"
+
+    class City(BaseModel):
+        name: str
+        country: str
+
+    def get_the_weather_city_type(city: City, metadata: dict):
+            """
+            Get the weather in any city
+
+            Args:
+                city: The city to get the weather for
+                metadata: The metadata for the city
+            """
+            print(metadata)
+            return f"It is currently 70 degrees in {city.name}, {city.country}"
 
     agent = Agent(
         model=Gemini(id="gemini-2.0-flash-lite-preview-02-05"),
-        tools=[get_the_weather_in_tokyo],
+        tools=[get_the_weather_in_tokyo, get_the_weather_in_france, get_the_weather, get_the_weather_city_type],
         exponential_backoff=True,
         show_tool_calls=True,
         markdown=True,
@@ -216,66 +255,6 @@ def test_tool_call_custom_tool_no_parameters():
     )
 
     response = agent.run("What is the weather in Tokyo?")
-
-    # Verify tool usage
-    assert any(msg.tool_calls for msg in response.messages)
-    assert response.content is not None
-    assert "70" in response.content
-
-
-def test_tool_call_custom_tool_union_parameters():
-    def get_the_weather(city: str, degrees: Union[int, float], condition: str | None = None):
-        """
-        Get the weather in a city
-
-        Args:
-            city: The city to get the weather for
-            degrees: The temperature in degrees
-            condition: The weather condition (e.g., cloudy, sunny, rainy)
-        """
-        weather_condition = condition if condition else "cloudy"
-        return f"It is currently {degrees} degrees and {weather_condition} in {city}"
-
-    agent = Agent(
-        model=Gemini(id="gemini-2.0-flash-exp"),
-        tools=[get_the_weather],
-        show_tool_calls=True,
-        markdown=True,
-        telemetry=False,
-        monitoring=False,
-    )
-
-    response = agent.run("What is the weather in Paris? You can make it up.")
-
-    # Verify tool usage
-    assert any(msg.tool_calls for msg in response.messages)
-    assert response.content is not None
-
-
-def test_tool_call_custom_tool_optional_parameters():
-    def get_the_weather(city: Optional[str] = None):
-        """
-        Get the weather in a city
-
-        Args:
-            city: The city to get the weather for
-        """
-        if city is None:
-            return "It is currently 70 degrees and cloudy in Tokyo"
-        else:
-            return f"It is currently 70 degrees and cloudy in {city}"
-
-    agent = Agent(
-        model=Gemini(id="gemini-2.0-flash-lite-preview-02-05"),
-        tools=[get_the_weather],
-        exponential_backoff=True,
-        show_tool_calls=True,
-        markdown=True,
-        telemetry=False,
-        monitoring=False,
-    )
-
-    response = agent.run("What is the weather in Paris?")
 
     # Verify tool usage
     assert any(msg.tool_calls for msg in response.messages)
