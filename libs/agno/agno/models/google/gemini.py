@@ -124,7 +124,9 @@ def _convert_schema(schema_dict) -> Optional[Schema]:
     if schema_type == "OBJECT" and "properties" in schema_dict:
         properties = {}
         for key, prop_def in schema_dict["properties"].items():
-            properties[key] = _convert_schema(prop_def)
+            converted_schema = _convert_schema(prop_def)
+            if converted_schema is not None:
+                properties[key] = converted_schema
         required = schema_dict.get("required", [])
 
         if properties:
