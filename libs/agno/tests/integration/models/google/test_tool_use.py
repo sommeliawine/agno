@@ -217,13 +217,13 @@ def test_tool_call_custom_tools():
         else:
             return f"It is currently 70 degrees and cloudy in {city}"
     
-    def get_the_weather(city: str, degrees: Union[int, float], condition: str | None = None):
+    def generate_weather_string(degrees: Union[int, float], city: str = "New York", condition: str | None = None):
             """
-            Get the weather in any city
+            Generate a weather string for any city
 
             Args:
-                city: The city to get the weather for
                 degrees: The temperature in degrees
+                city: The city to get the weather for
                 condition: The weather condition (e.g., cloudy, sunny, rainy)
             """
             weather_condition = condition if condition else "cloudy"
@@ -246,7 +246,7 @@ def test_tool_call_custom_tools():
 
     agent = Agent(
         model=Gemini(id="gemini-2.0-flash-lite-preview-02-05"),
-        tools=[get_the_weather_in_tokyo, get_the_weather_in_france, get_the_weather, get_the_weather_city_type],
+        tools=[get_the_weather_in_tokyo, get_the_weather_in_france, generate_weather_string, get_the_weather_city_type],
         exponential_backoff=True,
         show_tool_calls=True,
         markdown=True,
@@ -260,6 +260,7 @@ def test_tool_call_custom_tools():
     assert any(msg.tool_calls for msg in response.messages)
     assert response.content is not None
     assert "70" in response.content
+    assert False
 
 
 def test_tool_call_list_parameters():

@@ -108,6 +108,7 @@ def _convert_schema(schema_dict) -> Optional[Schema]:
     if schema_type is None or schema_type == "null":
         return None
     description = schema_dict.get("description", "")
+    default = schema_dict.get("default", None)
 
     if schema_type == "object" and "properties" in schema_dict:
         properties = {}
@@ -134,6 +135,7 @@ def _convert_schema(schema_dict) -> Optional[Schema]:
                 properties=properties,
                 required=required,
                 description=description,
+                default=default,
             )
         else:
             return None
@@ -164,11 +166,12 @@ def _convert_schema(schema_dict) -> Optional[Schema]:
         else:    
             return Schema(
                 any_of=any_of,
-                description=schema_dict.get("description", ""),
+                description=description,
+                default=default,
             )
     else:
         schema_type = schema_type.upper()
-        return Schema(type=schema_type, description=description)
+        return Schema(type=schema_type, description=description, default=default)
 
 
 def _format_function_definitions(tools_list):
@@ -188,6 +191,9 @@ def _format_function_definitions(tools_list):
                 description=description,
                 parameters=parameters_schema,
             )
+            print()
+            print(function_decl)
+            print()
 
             function_declarations.append(function_decl)
     if function_declarations:
