@@ -102,14 +102,29 @@ def _convert_schema(schema_dict) -> Optional[Schema]:
     Returns:
         types.Schema: The converted schema.
     """
-    schema_type = schema_dict.get("type", "")
+    if "anyOf" in schema_dict:
+        any_of = []
+        for sub_schema in schema_dict["anyOf"]:
+            sub_schema_converted = _convert_schema(sub_schema)
+            if sub_schema_converted is not None:
+                any_of.append(sub_schema_converted)
+        return Schema(
+            any_of=any_of,
+            description=schema_dict.get("description", ""),
+        )
+    
+    schema_type = schema_dict.get("type")
+    if schema_type is None or schema_type == "null":
+        return None
     if isinstance(schema_type, list):
         schema_type = schema_type[0]
     schema_type = schema_type.upper()
     description = schema_dict.get("description", "")
 
     if schema_type == "OBJECT" and "properties" in schema_dict:
-        properties = {key: _convert_schema(prop_def) for key, prop_def in schema_dict["properties"].items()}
+        properties = {}
+        for key, prop_def in schema_dict["properties"].items():
+            properties[key] = _convert_schema(prop_def)
         required = schema_dict.get("required", [])
 
         if properties:
@@ -120,7 +135,10 @@ def _convert_schema(schema_dict) -> Optional[Schema]:
                 description=description,
             )
         else:
-            return None
+            return Schema(
+                type=schema_type,
+                description=description,
+            )
 
     if schema_type == "ARRAY" and "items" in schema_dict:
         items = _convert_schema(schema_dict["items"])

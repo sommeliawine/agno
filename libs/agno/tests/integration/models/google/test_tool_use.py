@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union
 
 import pytest
 from pydantic import BaseModel, Field
@@ -221,6 +221,33 @@ def test_tool_call_custom_tool_no_parameters():
     assert response.content is not None
     assert "70" in response.content
 
+def test_tool_call_custom_tool_union_parameters():
+    def get_the_weather(city: str, degrees: Union[int, float], condition: str | None = None):
+        """
+        Get the weather in a city
+
+        Args:
+            city: The city to get the weather for
+            degrees: The temperature in degrees
+            condition: The weather condition (e.g., cloudy, sunny, rainy)
+        """
+        weather_condition = condition if condition else "cloudy"
+        return f"It is currently {degrees} degrees and {weather_condition} in {city}"
+
+    agent = Agent(
+        model=Gemini(id="gemini-2.0-flash-exp"),
+        tools=[get_the_weather],
+        show_tool_calls=True,
+        markdown=True,
+        telemetry=False,
+        monitoring=False,
+    )
+
+    response = agent.run("What is the weather in Paris? You can make it up.")
+
+    # Verify tool usage
+    assert any(msg.tool_calls for msg in response.messages)
+    assert response.content is not None
 
 def test_tool_call_custom_tool_optional_parameters():
     def get_the_weather(city: Optional[str] = None):

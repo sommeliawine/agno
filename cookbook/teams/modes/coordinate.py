@@ -20,31 +20,32 @@ import asyncio
 from typing import List
 
 from agno.agent import Agent
+from agno.models.google.gemini import Gemini
 from agno.models.openai import OpenAIChat
 from agno.run.team import TeamRunResponse  # type: ignore
 from agno.team import Team
 from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.tools.hackernews import HackerNewsTools
 from agno.tools.newspaper4k import Newspaper4kTools
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Article(BaseModel):
-    title: str
-    summary: str
-    reference_links: List[str]
+    title: str = Field(..., description="The title of the article")
+    summary: str = Field(..., description="A summary of the article")
+    reference_links: List[str] = Field(..., description="A list of reference links to the article")
 
 
 hn_researcher = Agent(
     name="HackerNews Researcher",
-    model=OpenAIChat("gpt-4o"),
+    model=Gemini(id="gemini-2.0-flash-exp"),
     role="Gets top stories from hackernews.",
     tools=[HackerNewsTools()],
 )
 
 web_searcher = Agent(
     name="Web Searcher",
-    model=OpenAIChat("gpt-4o"),
+    model=Gemini(id="gemini-2.0-flash-exp"),
     role="Searches the web for information on a topic",
     tools=[DuckDuckGoTools()],
     add_datetime_to_instructions=True,
@@ -60,7 +61,7 @@ article_reader = Agent(
 hn_team = Team(
     name="HackerNews Team",
     mode="coordinate",
-    model=OpenAIChat("gpt-4o"),
+    model=Gemini(id="gemini-2.0-flash-exp"),
     members=[hn_researcher, web_searcher, article_reader],
     instructions=[
         "First, search hackernews for what the user is asking about.",
@@ -70,6 +71,7 @@ hn_team = Team(
         "Finally, provide a thoughtful and engaging summary.",
     ],
     response_model=Article,
+    use_json_mode=True,
     show_tool_calls=True,
     markdown=True,
     debug_mode=True,
