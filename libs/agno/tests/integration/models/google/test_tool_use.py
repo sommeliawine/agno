@@ -128,6 +128,7 @@ def test_tool_use_with_native_structured_outputs():
     assert response.content.price is not None
     assert response.content.currency is not None
 
+
 def test_tool_use_with_json_structured_outputs():
     class StockPrice(BaseModel):
         price: float = Field(..., description="The price of the stock")
@@ -221,6 +222,7 @@ def test_tool_call_custom_tool_no_parameters():
     assert response.content is not None
     assert "70" in response.content
 
+
 def test_tool_call_custom_tool_union_parameters():
     def get_the_weather(city: str, degrees: Union[int, float], condition: str | None = None):
         """
@@ -248,6 +250,7 @@ def test_tool_call_custom_tool_union_parameters():
     # Verify tool usage
     assert any(msg.tool_calls for msg in response.messages)
     assert response.content is not None
+
 
 def test_tool_call_custom_tool_optional_parameters():
     def get_the_weather(city: Optional[str] = None):

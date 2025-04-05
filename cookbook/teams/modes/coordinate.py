@@ -32,7 +32,9 @@ from pydantic import BaseModel, Field
 class Article(BaseModel):
     title: str = Field(..., description="The title of the article")
     summary: str = Field(..., description="A summary of the article")
-    reference_links: List[str] = Field(..., description="A list of reference links to the article")
+    reference_links: List[str] = Field(
+        ..., description="A list of reference links to the article"
+    )
 
 
 hn_researcher = Agent(
