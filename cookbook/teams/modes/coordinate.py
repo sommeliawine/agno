@@ -20,7 +20,6 @@ import asyncio
 from typing import List
 
 from agno.agent import Agent
-from agno.models.google.gemini import Gemini
 from agno.models.openai import OpenAIChat
 from agno.run.team import TeamRunResponse  # type: ignore
 from agno.team import Team
@@ -38,14 +37,14 @@ class Article(BaseModel):
 
 hn_researcher = Agent(
     name="HackerNews Researcher",
-    model=Gemini(id="gemini-2.0-flash-exp"),
+    model=OpenAIChat("gpt-4o"),
     role="Gets top stories from hackernews.",
     tools=[HackerNewsTools()],
 )
 
 web_searcher = Agent(
     name="Web Searcher",
-    model=Gemini(id="gemini-2.0-flash-exp"),
+    model=OpenAIChat("gpt-4o"),
     role="Searches the web for information on a topic",
     tools=[DuckDuckGoTools()],
     add_datetime_to_instructions=True,
@@ -61,7 +60,7 @@ article_reader = Agent(
 hn_team = Team(
     name="HackerNews Team",
     mode="coordinate",
-    model=Gemini(id="gemini-2.0-flash-exp"),
+    model=OpenAIChat("gpt-4o"),
     members=[hn_researcher, web_searcher, article_reader],
     instructions=[
         "First, search hackernews for what the user is asking about.",
@@ -71,7 +70,6 @@ hn_team = Team(
         "Finally, provide a thoughtful and engaging summary.",
     ],
     response_model=Article,
-    use_json_mode=True,
     show_tool_calls=True,
     markdown=True,
     debug_mode=True,
