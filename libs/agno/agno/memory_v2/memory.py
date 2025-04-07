@@ -719,7 +719,7 @@ class Memory:
         if retrieval_method == "semantic":
             if not query:
                 raise ValueError("Query is required for semantic search")
-
+            
             return self._search_user_memories_semantic(user_id=user_id, query=query, limit=limit)
 
         elif retrieval_method == "first_n":
