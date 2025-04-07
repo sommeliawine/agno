@@ -78,7 +78,7 @@ def initialize_agent(agent_type: str) -> Agent:
     # For now, we're using a simple agent with OpenAI
     # In the future, we'll add tools and knowledge bases
     agent = Agent(
-        model=OpenAIChat(id="gpt-4o"),
+        model=OpenAIChat(id="gpt-4o-mini"),
         description=config["description"],
         instructions=config["instructions"],
         markdown=True
