@@ -1,0 +1,4 @@
+# CitifyAI specific files that should not be committed to the original agno repository
+README.CitifyAI.md
+scripts/citifyai/
+.env
