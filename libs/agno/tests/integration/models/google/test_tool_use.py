@@ -1,12 +1,9 @@
-from typing import Optional, Union
-
 import pytest
 from pydantic import BaseModel, Field
 
 from agno.agent import Agent, RunResponse  # noqa
 from agno.models.google import Gemini
 from agno.tools.duckduckgo import DuckDuckGoTools
-from agno.tools.exa import ExaTools
 from agno.tools.yfinance import YFinanceTools
 
 

@@ -1,19 +1,19 @@
-
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
+
 from agno.media import Image
 from agno.utils.log import log_error, log_warning
-
 
 try:
     from google.genai.types import (
         FunctionDeclaration,
         Schema,
-        Type,
         Tool,
+        Type,
     )
 except ImportError:
     raise ImportError("`google-genai` not installed. Please install it using `pip install google-genai`")
+
 
 def format_image_for_message(image: Image) -> Optional[Dict[str, Any]]:
     # Case 1: Image is a URL
@@ -65,6 +65,7 @@ def format_image_for_message(image: Image) -> Optional[Dict[str, Any]]:
         log_warning(f"Unknown image type: {type(image)}")
         return None
 
+
 def convert_schema(schema_dict: Dict[str, Any]) -> Optional[Schema]:
     """
     Recursively convert a JSON-like schema dictionary to a types.Schema object.
@@ -89,7 +90,7 @@ def convert_schema(schema_dict: Dict[str, Any]) -> Optional[Schema]:
             # Process nullable types
             prop_type = prop_def.get("type", "")
             is_nullable = False
-            if isinstance(prop_type, list) and 'null' in prop_type:
+            if isinstance(prop_type, list) and "null" in prop_type:
                 prop_def["type"] = prop_type[0]
                 is_nullable = True
 

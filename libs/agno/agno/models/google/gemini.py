@@ -39,8 +39,6 @@ except ImportError:
     raise ImportError("`google-genai` not installed. Please install it using `pip install google-genai`")
 
 
-
-
 @dataclass
 class Gemini(Model):
     """
@@ -620,7 +618,6 @@ class Gemini(Model):
             ModelResponse: Parsed response data
         """
         model_response = ModelResponse()
-        
 
         # Get response message
         if response.candidates is not None:
@@ -632,9 +629,7 @@ class Gemini(Model):
 
             # Add content
             if response_message.parts is not None:
-                
                 for part in response_message.parts:
-                    
                     # Extract text if present
                     if hasattr(part, "text") and part.text is not None:
                         model_response.content = part.text
