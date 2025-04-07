@@ -13,7 +13,6 @@ from agno.models.openai.chat import OpenAIChat
 
 memory_db = SqliteMemoryDb(table_name="memory", db_file="tmp/memory.db")
 
-# No need to set the model, it gets set by the agent to the agent's model
 memory = Memory(model=Claude(id="claude-3-5-sonnet-20241022"), memory_db=memory_db)
 
 # Reset the memory for this example

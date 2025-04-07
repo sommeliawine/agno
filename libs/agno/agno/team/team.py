@@ -29,7 +29,7 @@ from agno.agent.metrics import SessionMetrics
 from agno.exceptions import ModelProviderError, RunCancelledException
 from agno.media import Audio, AudioArtifact, AudioResponse, File, Image, ImageArtifact, Video, VideoArtifact
 from agno.memory.agent import AgentMemory
-from agno.memory_v2.memory import Memory, TeamContext, SessionSummary
+from agno.memory_v2.memory import Memory, SessionSummary
 from agno.memory.team import TeamMemory, TeamRun
 from agno.models.base import Model
 from agno.models.message import Citations, Message

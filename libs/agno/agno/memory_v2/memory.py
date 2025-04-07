@@ -949,7 +949,7 @@ class Memory:
         if session_team_context and session_team_context.member_interactions:
             team_member_interactions_str += "<member interactions>\n"
 
-            for interaction in self.team_context.member_interactions:
+            for interaction in session_team_context.member_interactions:
                 team_member_interactions_str += f"Member: {interaction.member_name}\n"
                 team_member_interactions_str += f"Task: {interaction.task}\n"
                 team_member_interactions_str += f"Response: {interaction.response.to_dict().get('content', '')}\n"

@@ -349,108 +349,244 @@ def test_add_run(memory_with_model, sample_run_response):
     assert memory_with_model.runs[session_id][0] == sample_run_response
 
 
-def test_get_messages_for_session(memory_with_model, sample_run_response):
+def test_get_messages_for_session(memory_with_model):
+    """Test retrieving messages for a session."""
+    # Add a run with messages
     session_id = "test_session"
     
-    # Add a run
-    memory_with_model.add_run(session_id, sample_run_response)
+    run_response = RunResponse(
+        content="Sample response",
+        messages=[
+            Message(role="user", content="Hello, how are you?"),
+            Message(role="assistant", content="I'm doing well, thank you for asking!")
+        ]
+    )
     
-    # Get messages
+    memory_with_model.add_run(session_id, run_response)
+    
+    # Get messages for the session
     messages = memory_with_model.get_messages_for_session(session_id)
     
+    # Verify the messages were retrieved correctly
     assert len(messages) == 2
     assert messages[0].role == "user"
-    assert messages[0].content == "Hello"
+    assert messages[0].content == "Hello, how are you?"
     assert messages[1].role == "assistant"
-    assert messages[1].content == "Hi there!"
+    assert messages[1].content == "I'm doing well, thank you for asking!"
 
 
-def test_get_messages_from_last_n_runs(memory_with_model):
+def test_get_messages_for_session_with_multiple_runs(memory_with_model):
+    """Test retrieving messages for a session with multiple runs."""
+    # Add multiple runs with messages
     session_id = "test_session"
     
-    # Add multiple runs
     run1 = RunResponse(
         content="First response",
         messages=[
-            Message(role="user", content="First question"),
-            Message(role="assistant", content="First answer")
+            Message(role="user", content="What's the weather like?"),
+            Message(role="assistant", content="It's sunny today.")
         ]
     )
     
     run2 = RunResponse(
         content="Second response",
         messages=[
-            Message(role="user", content="Second question"),
-            Message(role="assistant", content="Second answer")
+            Message(role="user", content="What about tomorrow?"),
+            Message(role="assistant", content="It's expected to rain.")
         ]
     )
     
     memory_with_model.add_run(session_id, run1)
     memory_with_model.add_run(session_id, run2)
     
-    # Get last run's messages
-    messages = memory_with_model.get_messages_from_last_n_runs(session_id, last_n=1)
+    # Get messages for the session
+    messages = memory_with_model.get_messages_for_session(session_id)
     
+    # Verify the messages were retrieved correctly
+    assert len(messages) == 4
+    assert messages[0].role == "user"
+    assert messages[0].content == "What's the weather like?"
+    assert messages[1].role == "assistant"
+    assert messages[1].content == "It's sunny today."
+    assert messages[2].role == "user"
+    assert messages[2].content == "What about tomorrow?"
+    assert messages[3].role == "assistant"
+    assert messages[3].content == "It's expected to rain."
+
+
+def test_get_messages_for_session_with_history_messages(memory_with_model):
+    """Test retrieving messages for a session with history messages."""
+    # Add a run with history messages
+    session_id = "test_session"
+    
+    run_response_1 = RunResponse(
+        content="Sample response",
+        messages=[
+            Message(role="user", content="Hello, how are you?", from_history=True),
+            Message(role="assistant", content="I'm doing well, thank you for asking!", from_history=True),
+        ]
+    )
+    
+    # The most recent run response
+    run_response_2 = RunResponse(
+        content="Sample response",
+        messages=[
+            Message(role="user", content="What's new?"),
+            Message(role="assistant", content="Not much, just working on some code."),
+        ]
+    )
+    
+    memory_with_model.add_run(session_id, run_response_1)
+    memory_with_model.add_run(session_id, run_response_2)
+    
+    # Get messages for the session with skip_history_messages=True (default)
+    messages = memory_with_model.get_messages_for_session(session_id)
+    
+    # Verify only non-history messages were retrieved
     assert len(messages) == 2
-    assert messages[0].content == "Second question"
-    assert messages[1].content == "Second answer"
+    assert messages[0].role == "user"
+    assert messages[0].content == "What's new?"
+    assert messages[1].role == "assistant"
+    assert messages[1].content == "Not much, just working on some code."
+    
+    # Get messages for the session with skip_history_messages=False
+    messages = memory_with_model.get_messages_for_session(session_id, skip_history_messages=False)
+    
+    # Verify all messages were retrieved
+    assert len(messages) == 4
+    assert messages[0].role == "user"
+    assert messages[0].content == "Hello, how are you?"
+    assert messages[1].role == "assistant"
+    assert messages[1].content == "I'm doing well, thank you for asking!"
+    assert messages[2].role == "user"
+    assert messages[2].content == "What's new?"
+    assert messages[3].role == "assistant"
+    assert messages[3].content == "Not much, just working on some code."
 
 
-# Team Context Tests
-def test_add_interaction_to_team_context(memory_with_model, sample_run_response):
-    session_id = "team_session"
-    member_name = "Agent1"
-    task = "Research task"
+def test_get_messages_from_last_n_runs(memory_with_model):
+    """Test retrieving messages from the last N runs."""
+    # Add multiple runs with messages
+    session_id = "test_session"
     
-    # Add an interaction
-    memory_with_model.add_interaction_to_team_context(session_id, member_name, task, sample_run_response)
-    
-    # Verify it was added
-    assert session_id in memory_with_model.team_context
-    assert len(memory_with_model.team_context[session_id].member_interactions) == 1
-    
-    interaction = memory_with_model.team_context[session_id].member_interactions[0]
-    assert interaction.member_name == member_name
-    assert interaction.task == task
-    assert interaction.response == sample_run_response
-
-
-def test_set_team_context_text(memory_with_model):
-    session_id = "team_session"
-    context_text = "This is team context information"
-    
-    # Set context text
-    memory_with_model.set_team_context_text(session_id, context_text)
-    
-    # Verify it was set
-    assert session_id in memory_with_model.team_context
-    assert memory_with_model.team_context[session_id].text == context_text
-    
-    # Test get_team_context_str
-    context_str = memory_with_model.get_team_context_str(session_id)
-    assert context_text in context_str
-
-
-def test_team_context_with_multiple_interactions(memory_with_model):
-    session_id = "team_session"
-    
-    # Add multiple interactions
     run1 = RunResponse(
-        content="Research result",
-        messages=[Message(role="assistant", content="Research findings")]
+        content="First response",
+        messages=[
+            Message(role="user", content="What's the weather like?"),
+            Message(role="assistant", content="It's sunny today.")
+        ]
     )
     
     run2 = RunResponse(
-        content="Analysis result",
-        messages=[Message(role="assistant", content="Analysis complete")]
+        content="Second response",
+        messages=[
+            Message(role="user", content="What about tomorrow?"),
+            Message(role="assistant", content="It's expected to rain.")
+        ]
     )
     
-    memory_with_model.add_interaction_to_team_context(session_id, "Researcher", "Do research", run1)
-    memory_with_model.add_interaction_to_team_context(session_id, "Analyst", "Analyze data", run2)
+    memory_with_model.add_run(session_id, run1)
+    memory_with_model.add_run(session_id, run2)
     
-    # Verify interactions were added
+    # Get messages from the last 1 run
+    messages = memory_with_model.get_messages_from_last_n_runs(session_id, last_n=1)
+    
+    # Verify only the last run's messages were retrieved
+    assert len(messages) == 2
+    assert messages[0].role == "user"
+    assert messages[0].content == "What about tomorrow?"
+    assert messages[1].role == "assistant"
+    assert messages[1].content == "It's expected to rain."
+
+
+# Team Context Tests
+def test_add_interaction_to_team_context(memory_with_model):
+    """Test adding an interaction to team context."""
+    # Add a run with messages
+    session_id = "test_session"
+    member_name = "Researcher"
+    task = "Research the latest AI developments"
+    
+    run_response = RunResponse(
+        content="Research findings",
+        messages=[
+            Message(role="assistant", content="I found that the latest AI models have improved significantly.")
+        ]
+    )
+    
+    # Add the interaction to team context
+    memory_with_model.add_interaction_to_team_context(session_id, member_name, task, run_response)
+    
+    # Verify the interaction was added
     assert session_id in memory_with_model.team_context
-    assert len(memory_with_model.team_context[session_id].member_interactions) == 2
+    assert len(memory_with_model.team_context[session_id].member_interactions) == 1
+    assert memory_with_model.team_context[session_id].member_interactions[0].member_name == member_name
+    assert memory_with_model.team_context[session_id].member_interactions[0].task == task
+    assert memory_with_model.team_context[session_id].member_interactions[0].response == run_response
+
+
+def test_set_team_context_text(memory_with_model):
+    """Test setting team context text."""
+    # Set team context text
+    session_id = "test_session"
+    context_text = "This is a team working on an AI project"
+    
+    memory_with_model.set_team_context_text(session_id, context_text)
+    
+    # Verify the team context text was set
+    assert session_id in memory_with_model.team_context
+    assert memory_with_model.team_context[session_id].text == context_text
+
+
+def test_get_team_context_str(memory_with_model):
+    """Test getting team context as a string."""
+    # Set team context text
+    session_id = "test_session"
+    context_text = "This is a team working on an AI project"
+    
+    memory_with_model.set_team_context_text(session_id, context_text)
+    
+    # Get team context as a string
+    context_str = memory_with_model.get_team_context_str(session_id)
+    
+    # Verify the team context string was formatted correctly
+    assert "<team context>" in context_str
+    assert context_text in context_str
+    assert "</team context>" in context_str
+
+
+def test_get_team_member_interactions_str(memory_with_model):
+    """Test getting team member interactions as a string."""
+    # Add interactions to team context
+    session_id = "test_session"
+    
+    run1 = RunResponse(
+        content="Research findings",
+        messages=[
+            Message(role="assistant", content="I found that the latest AI models have improved significantly.")
+        ]
+    )
+    
+    run2 = RunResponse(
+        content="Analysis results",
+        messages=[
+            Message(role="assistant", content="Based on the research, we should focus on transformer architectures.")
+        ]
+    )
+    
+    memory_with_model.add_interaction_to_team_context(session_id, "Researcher", "Research AI developments", run1)
+    memory_with_model.add_interaction_to_team_context(session_id, "Analyst", "Analyze research findings", run2)
+    
+    # Get team member interactions as a string
+    interactions_str = memory_with_model.get_team_member_interactions_str(session_id)
+    
+    # Verify the team member interactions string was formatted correctly
+    assert "<member interactions>" in interactions_str
+    assert "Researcher" in interactions_str
+    assert "Research AI developments" in interactions_str
+    assert "Analyst" in interactions_str
+    assert "Analyze research findings" in interactions_str
+    assert "</member interactions>" in interactions_str
 
 
 # Memory Integration Tests
