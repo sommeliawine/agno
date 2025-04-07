@@ -793,7 +793,7 @@ class Team:
         self.write_to_storage(session_id=session_id, user_id=user_id)
 
         # 7. Parse team response model
-        if self.response_model is not None:
+        if self.response_model is not None and not isinstance(run_response.content, self.response_model):
             if isinstance(run_response.content, str) and self.parse_response:
                 try:
                     parsed_response_content = parse_response_model_str(run_response.content, self.response_model)
@@ -807,8 +807,10 @@ class Team:
                 except Exception as e:
                     log_warning(f"Failed to convert response to output model: {e}")
             else:
-                log_warning("Something went wrong. Run response content is not a string")
-        elif self._member_response_model is not None:
+                log_warning("Something went wrong. Team run response content is not a string")
+        elif self._member_response_model is not None and not isinstance(
+            run_response.content, self._member_response_model
+        ):
             if isinstance(run_response.content, str):
                 try:
                     parsed_response_content = parse_response_model_str(
@@ -823,7 +825,7 @@ class Team:
                 except Exception as e:
                     log_warning(f"Failed to convert response to output model: {e}")
             else:
-                log_warning("Something went wrong. Run response content is not a string")
+                log_warning("Something went wrong. Member run response content is not a string")
 
         # 8. Log Team Run
         self._log_team_run(session_id=session_id, user_id=user_id)
@@ -1158,7 +1160,7 @@ class Team:
         if self.response_model is not None and self.parse_response and stream is True:
             # Disable stream if response_model is set
             stream = False
-            log_warning("Disabling stream as response_model is set")
+            log_debug("Disabling stream as response_model is set")
 
         # Configure the model for runs
         self._configure_model(show_tool_calls=show_tool_calls)
@@ -1460,7 +1462,7 @@ class Team:
         self.write_to_storage(session_id=session_id, user_id=user_id)
 
         # 7. Parse team response model
-        if self.response_model is not None:
+        if self.response_model is not None and not isinstance(run_response.content, self.response_model):
             if isinstance(run_response.content, str) and self.parse_response:
                 try:
                     parsed_response_content = parse_response_model_str(run_response.content, self.response_model)
@@ -1475,7 +1477,9 @@ class Team:
                     log_warning(f"Failed to convert response to output model: {e}")
             else:
                 log_warning("Something went wrong. Team run response content is not a string")
-        elif self._member_response_model is not None:
+        elif self._member_response_model is not None and not isinstance(
+            run_response.content, self._member_response_model
+        ):
             if isinstance(run_response.content, str):
                 try:
                     parsed_response_content = parse_response_model_str(
