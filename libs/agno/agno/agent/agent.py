@@ -3725,14 +3725,12 @@ class Agent:
 
 
     def _register_agent_on_platform(self) -> None:
-        if not self.register_on_platform:
-            return
 
-        from agno.api.agent import AgentRegister, create_agent
+        from agno.api.agent import AgentCreate, create_agent
 
         try:
             create_agent(
-                app=AgentRegister(
+                app=AgentCreate(
                 name=self.name,
                     agent_id=self.agent_id,
                     agent_config={
@@ -3750,16 +3748,17 @@ class Agent:
         if not self.register_on_platform:
             return
 
-        from agno.api.agent import AgentRegister, acreate_agent
+        from agno.api.agent import AgentCreate, acreate_agent
 
         try:
+            print("async creating agent on", self.run_id, self.agent_id, self.name)
             await acreate_agent(
-                app=AgentRegister(
+                agent=AgentCreate(
                     name=self.name,
                     agent_id=self.agent_id,
-                    agent_config={
-                        "instructions": self.instructions,
-                        "tools": self.tools,
+                    config={
+                        "instructions": self.instructions if self.instructions is not None else [],
+                        "tools": self.tools if self.tools is not None else [],
                         "knowledge": self.knowledge.__class__.__name__ if self.knowledge is not None else None,
                         "storage": self.storage.__class__.__name__ if self.storage is not None else None,
                     },
@@ -3779,7 +3778,6 @@ class Agent:
         try:
             run_data = self._create_run_data()
             agent_session: AgentSession = self.agent_session or self.get_agent_session()
-
             create_agent_run(
                 run=AgentRunCreate(
                     run_id=self.run_id,

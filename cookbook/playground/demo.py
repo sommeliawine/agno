@@ -30,6 +30,10 @@ simple_agent = Agent(
     num_history_responses=3,
     add_datetime_to_instructions=True,
     markdown=True,
+    instructions=[
+        "Always answer like a pirate",
+    ],
+    register_on_platform=True,
 )
 
 web_agent = Agent(

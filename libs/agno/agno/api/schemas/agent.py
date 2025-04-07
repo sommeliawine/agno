@@ -21,7 +21,6 @@ class AgentRunCreate(BaseModel):
 
 class AgentCreate(BaseModel):
     """Data sent to API to create an Agent"""
-
-    name: Optional[str] = None
     agent_id: str
-    agent_config: Dict[str, Any]
+    name: Optional[str] = None
+    config: Dict[str, Any]
